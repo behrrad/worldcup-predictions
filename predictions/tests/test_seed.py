@@ -28,3 +28,25 @@ class SeedCommandTests(TestCase):
     def test_iran_is_seeded(self):
         call_command("seed_worldcup2026", verbosity=0)
         self.assertTrue(Team.objects.filter(name_fa="ایران").exists())
+
+
+class TestTournamentCommandTests(TestCase):
+    def test_creates_compressed_timeline(self):
+        from django.utils import timezone
+
+        call_command("seed_test_tournament", verbosity=0)
+        comp = Competition.objects.get(slug=sd.TEST_CUP_SLUG)
+        self.assertEqual(comp.teams.count(), len(sd.TEST_CUP_TEAMS))
+        self.assertEqual(comp.matches.count(), len(sd.TEST_CUP_SCHEDULE))
+
+        now = timezone.now()
+        states = [(m.is_finished, m.is_open_for(30, now)) for m in comp.matches.all()]
+        self.assertEqual(sum(1 for f, _ in states if f), 3)          # 3 finished
+        self.assertTrue(any(not f and o for f, o in states))         # at least one open
+        self.assertTrue(any(not f and not o for f, o in states))     # at least one locked
+
+    def test_rerun_refreshes_timeline(self):
+        call_command("seed_test_tournament", verbosity=0)
+        call_command("seed_test_tournament", verbosity=0)  # idempotent (re-seeds)
+        comp = Competition.objects.get(slug=sd.TEST_CUP_SLUG)
+        self.assertEqual(comp.matches.count(), len(sd.TEST_CUP_SCHEDULE))
