@@ -1,10 +1,21 @@
+import json
+import tempfile
 from collections import Counter
 
 from django.core.management import call_command
+from django.core.management.base import CommandError
 from django.test import TestCase
 
-from predictions import seed_data as sd
-from predictions.models import Competition, Match, Team
+from accounts.models import User
+from predictions import consts, seed_data as sd
+from predictions.models import (
+    Competition,
+    League,
+    Match,
+    Membership,
+    Prediction,
+    Team,
+)
 
 
 class LoadRealScheduleTests(TestCase):
@@ -38,3 +49,38 @@ class LoadRealScheduleTests(TestCase):
         comp = Competition.objects.get(slug=sd.WC2026_SLUG)
         self.assertEqual(comp.matches.count(), 104)
         self.assertEqual(comp.teams.count(), 48)
+
+    def test_reload_preserves_predictions_and_results(self):
+        """A second load must NOT wipe predictions/scores/results (Codex P1)."""
+        call_command("load_worldcup2026", verbosity=0)
+        comp = Competition.objects.get(slug=sd.WC2026_SLUG)
+        user = User.objects.create_user(email="p@test.com", password="pw")
+        league = League.objects.create(name="L", competition=comp, owner=user)
+        mem = Membership.objects.create(league=league, user=user, role=consts.Role.OWNER)
+        match = comp.matches.filter(stage="GROUP").order_by("match_number").first()
+        Prediction.objects.create(membership=mem, match=match,
+                                  predicted_home=2, predicted_away=1)
+        match_id = match.id
+
+        call_command("load_worldcup2026", verbosity=0)  # reload
+
+        self.assertTrue(Prediction.objects.filter(membership=mem).exists())
+        # the same match row is reused (id preserved), so predictions stay attached
+        self.assertTrue(comp.matches.filter(id=match_id).exists())
+        self.assertEqual(comp.matches.count(), 104)
+
+    def test_invalid_file_is_rejected_without_mutating(self):
+        """A bad file must raise and leave existing data untouched (Codex P2)."""
+        call_command("load_worldcup2026", verbosity=0)
+        before = Competition.objects.get(slug=sd.WC2026_SLUG).matches.count()
+
+        bad = {"competition": {"slug": sd.WC2026_SLUG}, "teams": [], "matches": []}
+        with tempfile.NamedTemporaryFile("w", suffix=".json", delete=False) as f:
+            json.dump(bad, f)
+            bad_path = f.name
+
+        with self.assertRaises(CommandError):
+            call_command("load_worldcup2026", "--file", bad_path, verbosity=0)
+
+        after = Competition.objects.get(slug=sd.WC2026_SLUG).matches.count()
+        self.assertEqual(before, after)  # nothing was deleted
