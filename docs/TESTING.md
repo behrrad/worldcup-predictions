@@ -95,7 +95,13 @@ Automated tests cover logic; for full-stack confidence also:
 4. Submit a prediction before lock; confirm it cannot be changed after lock.
 5. In `/admin`, enter a match result → confirm the leaderboard updates.
 
-## Suggested CI
+## Continuous integration
 
-Run the same three gate commands on every push. Backend needs only Python + the
-`requirements.txt`; the SQLite test settings need no database service.
+`.github/workflows/ci.yml` runs the gate on every push/PR to `main`:
+
+- **backend** job — `pip install -r requirements.txt`, then
+  `python manage.py check` + `test` with `--settings=config.settings_test`
+  (in-memory SQLite + mocked Clerk → no database service, no secrets).
+- **frontend** job — `pnpm install --frozen-lockfile` then `pnpm exec tsc --noEmit`.
+
+Both jobs run in parallel and require no repository secrets.
