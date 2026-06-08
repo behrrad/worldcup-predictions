@@ -1,7 +1,8 @@
+from django.conf import settings
 from django.shortcuts import get_object_or_404
 from django.utils import timezone
 from rest_framework.decorators import api_view, throttle_classes
-from rest_framework.exceptions import NotFound, ValidationError
+from rest_framework.exceptions import NotFound, PermissionDenied, ValidationError
 from rest_framework.response import Response
 
 from . import consts, scoring
@@ -118,6 +119,7 @@ def me(request):
         "email": user.email,
         "display_name": user.display_name,
         "public_name": user.public_name,
+        "is_admin": _is_admin(user),
     })
 
 
@@ -302,3 +304,74 @@ def match_detail(request, slug, match_id):
         "member_count": league.memberships.count(),
         "predictions": others,
     })
+
+
+# --------------------------------------------------------------------------- #
+# In-app admin: manual result entry (gated to admins; entering a score updates
+# the scoreboard automatically via the Match post_save signal).
+# --------------------------------------------------------------------------- #
+def _is_admin(user):
+    if not user or not user.is_authenticated:
+        return False
+    if user.is_superuser or user.is_staff:
+        return True
+    email = (user.email or "").lower()
+    return bool(email) and email in settings.ADMIN_EMAILS
+
+
+def _admin_match_dict(match):
+    return {
+        "id": match.id,
+        "match_number": match.match_number,
+        "stage": match.stage,
+        "stage_label": consts.STAGE_LABELS.get(match.stage),
+        "kickoff": match.kickoff.isoformat(),
+        "venue": match.venue or None,
+        "competition": {"name": match.competition.name, "slug": match.competition.slug},
+        "home_team": _team(match.home_team),
+        "away_team": _team(match.away_team),
+        "home_label": consts.bracket_label_fa(match.home_label) if not match.home_team_id else None,
+        "away_label": consts.bracket_label_fa(match.away_label) if not match.away_team_id else None,
+        "home_score": match.home_score,
+        "away_score": match.away_score,
+        "is_finished": match.is_finished,
+        "status": match.status,
+    }
+
+
+@api_view(["GET"])
+def admin_matches(request):
+    if not _is_admin(request.user):
+        raise PermissionDenied(consts.MSG_ADMIN_ONLY)
+    qs = (
+        Match.objects.select_related("home_team", "away_team", "competition")
+        .order_by("kickoff", "match_number")
+    )
+    comp = request.query_params.get("competition")
+    qs = qs.filter(competition__slug=comp) if comp else qs.filter(competition__is_active=True)
+    return Response([_admin_match_dict(m) for m in qs])
+
+
+@api_view(["POST"])
+def admin_set_result(request, match_id):
+    if not _is_admin(request.user):
+        raise PermissionDenied(consts.MSG_ADMIN_ONLY)
+    match = get_object_or_404(Match, id=match_id)
+
+    home, away = request.data.get("home_score"), request.data.get("away_score")
+    # Both empty/None -> clear the result (reverts the match to scheduled).
+    if home in (None, "") and away in (None, ""):
+        match.home_score = match.away_score = None
+        match.save()
+        return Response(_admin_match_dict(match))
+
+    try:
+        home_i, away_i = int(home), int(away)
+    except (TypeError, ValueError):
+        raise ValidationError({"detail": consts.MSG_INVALID_RESULT})
+    if home_i < 0 or away_i < 0:
+        raise ValidationError({"detail": consts.MSG_INVALID_RESULT})
+
+    match.home_score, match.away_score = home_i, away_i
+    match.save()  # status -> FINISHED; post_save signal recomputes everyone's points
+    return Response(_admin_match_dict(match))
