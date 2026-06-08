@@ -11,8 +11,13 @@ export default async function Home() {
   return (
     <>
       <section className="hero">
-        <div className="hero-emoji">⚽🏆</div>
-        <h1>پیش‌بینی جام جهانی</h1>
+        <span className="kicker">
+          🇺🇸 🇨🇦 🇲🇽 میزبانی آمریکا · کانادا · مکزیک
+        </span>
+        <h1>
+          <span className="accent">جام جهانی ۲۰۲۶</span> را{" "}
+          <span className="accent2">پیش‌بینی</span> کن
+        </h1>
         <p>
           با دوستانت نتیجهٔ بازی‌های جام جهانی را پیش‌بینی کن، امتیاز جمع کن و
           صدرنشین جدول شو.

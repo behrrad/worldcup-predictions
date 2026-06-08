@@ -76,10 +76,7 @@ export default async function MatchDetail({
               </thead>
               <tbody>
                 {data.predictions.map((p, i) => (
-                  <tr
-                    key={i}
-                    style={p.is_me ? { background: "#fffbeb" } : undefined}
-                  >
+                  <tr key={i} className={p.is_me ? "me-row" : undefined}>
                     <td>
                       {p.name}
                       {p.is_me && <span className="muted"> (تو)</span>}
