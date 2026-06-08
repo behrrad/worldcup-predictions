@@ -41,8 +41,10 @@ function MatchCard({ m, memberCount }: { m: AllPredMatch; memberCount: number })
         <span>{fmtDateTime(m.kickoff)}</span>
         {m.revealed ? (
           <span className="lock-open">نمایش داده شد</span>
-        ) : (
+        ) : m.is_open ? (
           <span className="muted">🔒 هنوز قفل نشده</span>
+        ) : (
+          <span className="muted">🔒 خصوصی</span>
         )}
       </div>
       <div className="match">
@@ -92,10 +94,15 @@ export default async function AllPredictions({
     `/leagues/${slug}/all-predictions/`,
   )) as AllPredictionsResp;
 
-  // Matches arrive in kickoff order. Show revealed ones first (most recently
-  // played on top), then the still-locked ones whose picks stay hidden.
+  // Matches arrive in kickoff order. Three buckets:
+  //  - revealed: locked + reveal on → picks shown (newest first)
+  //  - private: locked/finished but the owner turned reveal off → picks hidden
+  //  - upcoming: still open for predictions → picks hidden until lock
   const revealed = data.matches.filter((m) => m.revealed).reverse();
-  const upcoming = data.matches.filter((m) => !m.revealed);
+  const privateLocked = data.matches
+    .filter((m) => !m.revealed && !m.is_open)
+    .reverse();
+  const upcoming = data.matches.filter((m) => m.is_open);
 
   return (
     <>
@@ -132,6 +139,17 @@ export default async function AllPredictions({
         <>
           <div className="day-header mt">✅ بازی‌های نمایش‌داده‌شده</div>
           {revealed.map((m) => (
+            <MatchCard key={m.id} m={m} memberCount={data.member_count} />
+          ))}
+        </>
+      )}
+
+      {privateLocked.length > 0 && (
+        <>
+          <div className="day-header mt">
+            🔒 پیش‌بینی‌ها خصوصی‌اند (مدیر نمایش پیش‌بینی دیگران را خاموش کرده)
+          </div>
+          {privateLocked.map((m) => (
             <MatchCard key={m.id} m={m} memberCount={data.member_count} />
           ))}
         </>

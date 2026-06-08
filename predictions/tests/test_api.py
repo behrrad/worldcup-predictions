@@ -642,6 +642,7 @@ class AllPredictionsApiTests(AuthedTestCase):
         Prediction.objects.create(membership=self.other, match=m, predicted_home=3, predicted_away=2)
         row = next(r for r in self._body()["matches"] if r["id"] == m.id)
         self.assertFalse(row["revealed"])
+        self.assertTrue(row["is_open"])                     # genuinely still open
         self.assertEqual(row["predicted_count"], 1)         # participation shown
         self.assertIsNone(row["predictions"][0]["home"])    # pick withheld
         self.assertIsNone(row["predictions"][0]["away"])
@@ -655,6 +656,8 @@ class AllPredictionsApiTests(AuthedTestCase):
         self.assertFalse(body["reveal_predictions"])
         row = next(r for r in body["matches"] if r["id"] == m.id)
         self.assertFalse(row["revealed"])
+        # Locked, not open -> the UI groups it as "private", not "upcoming".
+        self.assertFalse(row["is_open"])
         self.assertIsNone(row["predictions"][0]["home"])
 
     def test_non_member_gets_404(self):

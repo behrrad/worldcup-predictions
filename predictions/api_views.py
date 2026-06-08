@@ -611,9 +611,8 @@ def league_all_predictions(request, slug):
 
     out = []
     for match in matches:
-        revealed = league.reveal_predictions and not match.is_open_for(
-            league.lock_minutes, now
-        )
+        is_open = match.is_open_for(league.lock_minutes, now)
+        revealed = league.reveal_predictions and not is_open
         match_preds = preds.get(match.id, {})
         match_scores = scores.get(match.id, {}) if revealed else {}
         rows = []
@@ -646,6 +645,9 @@ def league_all_predictions(request, slug):
             "home_score": match.home_score,
             "away_score": match.away_score,
             "is_finished": match.is_finished,
+            # is_open lets the UI tell a still-open match apart from one that is
+            # locked/finished but kept private by the owner (both have revealed=False).
+            "is_open": is_open,
             "revealed": revealed,
             "predicted_count": len(rows),
             "predictions": rows,

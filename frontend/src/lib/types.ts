@@ -156,6 +156,9 @@ export interface AllPredMatch {
   home_score: number | null;
   away_score: number | null;
   is_finished: boolean;
+  // Still open for predictions (not yet locked). Distinguishes a genuinely
+  // upcoming match from one that's locked/finished but kept private by the owner.
+  is_open: boolean;
   revealed: boolean;
   predicted_count: number;
   predictions: AllPredEntry[];
