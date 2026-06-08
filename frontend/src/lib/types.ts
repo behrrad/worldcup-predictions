@@ -166,6 +166,7 @@ export interface AllPredMatch {
 
 export interface AllPredictionsResp {
   reveal_predictions: boolean;
+  lock_minutes: number;
   member_count: number;
   matches: AllPredMatch[];
 }

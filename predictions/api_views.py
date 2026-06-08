@@ -655,6 +655,7 @@ def league_all_predictions(request, slug):
 
     return Response({
         "reveal_predictions": league.reveal_predictions,
+        "lock_minutes": league.lock_minutes,
         "member_count": len(memberships),
         "matches": out,
     })
