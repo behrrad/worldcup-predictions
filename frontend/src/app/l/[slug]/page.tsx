@@ -41,13 +41,13 @@ export default async function Overview({
                 </div>
                 <div className="match">
                   <div className="team home">
-                    <span>{m.home_team?.name ?? "؟"}</span>
+                    <span>{m.home_team?.name ?? m.home_label ?? "؟"}</span>
                     <span className="flag">{m.home_team?.flag}</span>
                   </div>
                   <div className="vs">—</div>
                   <div className="team away">
                     <span className="flag">{m.away_team?.flag}</span>
-                    <span>{m.away_team?.name ?? "؟"}</span>
+                    <span>{m.away_team?.name ?? m.away_label ?? "؟"}</span>
                   </div>
                 </div>
               </div>

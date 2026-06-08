@@ -32,8 +32,12 @@ def _match_dict(match, league, now, prediction=None, score=None):
         "stage": match.stage,
         "stage_label": consts.STAGE_LABELS.get(match.stage),
         "kickoff": match.kickoff.isoformat(),
+        "venue": match.venue or None,
         "home_team": _team(match.home_team),
         "away_team": _team(match.away_team),
+        # Persian bracket-slot placeholders, shown when the team isn't decided yet.
+        "home_label": consts.bracket_label_fa(match.home_label) if not match.home_team_id and match.home_label else None,
+        "away_label": consts.bracket_label_fa(match.away_label) if not match.away_team_id and match.away_label else None,
         "home_score": match.home_score,
         "away_score": match.away_score,
         "is_finished": match.is_finished,
