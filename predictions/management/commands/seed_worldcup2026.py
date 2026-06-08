@@ -115,6 +115,15 @@ class Command(BaseCommand):
             comp.matches.all().delete()
             self.stdout.write(self.style.WARNING("داده‌های قبلی این تورنمنت پاک شد."))
 
+        # Snapshot each existing match's team codes BEFORE any team change, so a
+        # fixture change is detected against the *real* old pairing even when an
+        # old team is about to be pruned (its FK would otherwise be NULLed first).
+        old_fixture = {
+            mn: (h, a) for mn, h, a in comp.matches.values_list(
+                "match_number", "home_team__code", "away_team__code"
+            )
+        }
+
         # UPSERT teams by code (don't delete-and-recreate): this keeps each Team's
         # identity, so knockout matches an admin has already filled in keep pointing
         # at the right team across reloads. Teams that left the tournament (a code no
@@ -133,13 +142,14 @@ class Command(BaseCommand):
             team_map[t["code"]] = team
         comp.teams.exclude(code__in=team_map).delete()
 
-        # Matches are UPSERTED by match_number, so existing match rows — and the
+        # Matches are UPSERTED by match_number, so existing rows — and the
         # predictions, scores, and entered results attached to them — survive.
         # Teams are only (re)assigned from the file when it actually names them, so
         # a reload never wipes admin-filled knockout participants (the JSON has no
         # home_code/away_code for undecided knockout slots).
         n_group = n_knockout = n_cleared = 0
         for m in sorted(data["matches"], key=lambda x: x["match_number"]):
+            mn = m["match_number"]
             kickoff = datetime.fromisoformat(m["kickoff_utc"].replace("Z", "+00:00"))
             hc, ac = m.get("home_code"), m.get("away_code")
             defaults = {"stage": m["stage"], "kickoff": kickoff}
@@ -148,25 +158,21 @@ class Command(BaseCommand):
             if ac:
                 defaults["away_team"] = team_map.get(ac)
 
-            existing = (
-                Match.objects.filter(competition=comp, match_number=m["match_number"])
-                .select_related("home_team", "away_team").first()
-            )
-            # If this match number now points at a *different* fixture than what's
+            # If this match number now points at a *different* fixture than the one
             # stored (e.g. migrating an old placeholder schedule to the real one),
-            # any predictions/scores on the row were about other teams — drop them
-            # so they aren't silently reattached to the wrong fixture. Unchanged
-            # fixtures keep their predictions (the whole point of the upsert).
-            if existing and (
-                (hc and existing.home_team and existing.home_team.code != hc)
-                or (ac and existing.away_team and existing.away_team.code != ac)
-            ):
-                Prediction.objects.filter(match=existing).delete()
-                MatchScore.objects.filter(match=existing).delete()
+            # its predictions/scores/result were about other teams — drop them and
+            # the stale result so they aren't reattached to the wrong fixture.
+            # Unchanged fixtures keep everything (the whole point of the upsert).
+            old = old_fixture.get(mn)
+            if old is not None and ((hc and old[0] != hc) or (ac and old[1] != ac)):
+                Prediction.objects.filter(match__competition=comp, match__match_number=mn).delete()
+                MatchScore.objects.filter(match__competition=comp, match__match_number=mn).delete()
+                defaults["home_score"] = None
+                defaults["away_score"] = None
                 n_cleared += 1
 
             Match.objects.update_or_create(
-                competition=comp, match_number=m["match_number"], defaults=defaults,
+                competition=comp, match_number=mn, defaults=defaults,
             )
             if m["stage"] == "GROUP":
                 n_group += 1

@@ -161,6 +161,32 @@ class SeedCommandTests(TestCase):
         self.assertFalse(Prediction.objects.filter(match=m1).exists())  # fixture changed
         self.assertTrue(Prediction.objects.filter(match=m2).exists())   # unchanged
 
+    def test_migration_from_pruned_old_team_clears_stale_data(self):
+        """Old placeholder fixture using a team not in the real JSON: the team is
+        pruned, yet the stale prediction AND result are still cleared."""
+        call_command("seed_worldcup2026", verbosity=0)
+        comp = Competition.objects.get(slug=sd.WC2026_SLUG)
+        # A "ghost" team whose code isn't in the real 2026 field (e.g. old fake data).
+        ghost = Team.objects.create(competition=comp, name_fa="قدیمی", name_en="Old",
+                                    code="CHI", group="A")
+        m1 = comp.matches.get(match_number=1)
+        m1.home_team = ghost
+        m1.home_score, m1.away_score = 3, 0  # admin had entered a result
+        m1.save()
+        user = User.objects.create_user(email="g@test.com", password="pw")
+        league = League.objects.create(name="L", competition=comp, owner=user)
+        mem = Membership.objects.create(league=league, user=user, role=consts.Role.OWNER)
+        Prediction.objects.create(membership=mem, match=m1, predicted_home=3, predicted_away=0)
+
+        call_command("seed_worldcup2026", verbosity=0)  # real reload prunes CHI
+
+        m1.refresh_from_db()
+        self.assertFalse(comp.teams.filter(code="CHI").exists())        # ghost pruned
+        self.assertFalse(Prediction.objects.filter(match=m1).exists())  # stale prediction cleared
+        self.assertIsNone(m1.home_score)                               # stale result cleared
+        self.assertFalse(m1.is_finished)
+        self.assertEqual(m1.home_team.code, "MEX")                     # now the real fixture
+
 
 class TestTournamentCommandTests(TestCase):
     def test_creates_compressed_timeline(self):
