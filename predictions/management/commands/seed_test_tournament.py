@@ -22,9 +22,6 @@ class Command(BaseCommand):
             defaults={"name": sd.TEST_CUP_NAME, "start_date": now.date(),
                       "is_active": True},
         )
-        # Refresh the timeline on every run (delete old matches; keep teams).
-        comp.matches.all().delete()
-
         teams = []
         for name_fa, code, flag in sd.TEST_CUP_TEAMS:
             team, _ = Team.objects.get_or_create(
@@ -33,21 +30,27 @@ class Command(BaseCommand):
             )
             teams.append(team)
 
+        # Refresh the timeline by UPSERTING each match by its number, so existing
+        # predictions/scores (and stable match ids) are preserved across reruns.
         open_n = locked_n = finished_n = 0
         for i, (h, a, mins, hs, as_, stage) in enumerate(sd.TEST_CUP_SCHEDULE, start=1):
-            match = Match(
-                competition=comp, match_number=i, stage=stage,
-                home_team=teams[h], away_team=teams[a],
-                kickoff=now + datetime.timedelta(minutes=mins),
+            match, _ = Match.objects.update_or_create(
+                competition=comp, match_number=i,
+                defaults={
+                    "stage": stage,
+                    "home_team": teams[h],
+                    "away_team": teams[a],
+                    "kickoff": now + datetime.timedelta(minutes=mins),
+                    "home_score": hs,
+                    "away_score": as_,
+                },
             )
-            if hs is not None:
-                match.home_score, match.away_score = hs, as_
+            if match.is_finished:
                 finished_n += 1
             elif match.is_open_for(30, now=now):
                 open_n += 1
             else:
                 locked_n += 1
-            match.save()
 
         self.stdout.write(self.style.SUCCESS(
             f"«{comp.name}» آماده شد: {len(teams)} تیم، "

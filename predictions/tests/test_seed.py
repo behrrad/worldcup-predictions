@@ -50,3 +50,21 @@ class TestTournamentCommandTests(TestCase):
         call_command("seed_test_tournament", verbosity=0)  # idempotent (re-seeds)
         comp = Competition.objects.get(slug=sd.TEST_CUP_SLUG)
         self.assertEqual(comp.matches.count(), len(sd.TEST_CUP_SCHEDULE))
+
+    def test_rerun_preserves_predictions(self):
+        from accounts.models import User
+        from predictions.models import League, Membership, Prediction
+
+        call_command("seed_test_tournament", verbosity=0)
+        comp = Competition.objects.get(slug=sd.TEST_CUP_SLUG)
+        user = User.objects.create_user(email="t@test.com", password="pw")
+        league = League.objects.create(name="L", competition=comp, owner=user)
+        mem = Membership.objects.create(league=league, user=user, role=consts.Role.OWNER)
+        match = comp.matches.order_by("match_number").first()
+        Prediction.objects.create(membership=mem, match=match,
+                                  predicted_home=1, predicted_away=0)
+
+        call_command("seed_test_tournament", verbosity=0)  # rerun must not wipe it
+
+        self.assertTrue(Prediction.objects.filter(membership=mem).exists())
+        self.assertEqual(comp.matches.count(), len(sd.TEST_CUP_SCHEDULE))
