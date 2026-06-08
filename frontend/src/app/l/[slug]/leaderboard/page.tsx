@@ -29,7 +29,7 @@ export default async function Leaderboard({
             board.map((r) => (
               <tr
                 key={r.rank + r.name}
-                style={r.is_me ? { background: "#fffbeb" } : undefined}
+                className={r.is_me ? "me-row" : undefined}
               >
                 <td className={`rank rank-${r.rank}`}>
                   {MEDAL[r.rank] ? (
