@@ -7,7 +7,7 @@ Each class is a ``UserRateThrottle`` (keyed by authenticated user) with a fixed
 names live in predictions/consts.py so they never drift between here, the
 settings, and the rates.
 """
-from rest_framework.throttling import AnonRateThrottle, UserRateThrottle
+from rest_framework.throttling import UserRateThrottle
 
 from . import consts
 
@@ -24,8 +24,9 @@ class JoinLeagueThrottle(UserRateThrottle):
     scope = consts.THROTTLE_SCOPE_JOIN
 
 
-# `@throttle_classes` *replaces* the DEFAULT_THROTTLE_CLASSES for a view rather
-# than adding to them, so each scoped view must re-list the baseline Anon/User
-# throttles to keep the global limits (incl. anon-throttling on the 401 path).
-PREDICT_THROTTLES = [AnonRateThrottle, UserRateThrottle, PredictThrottle]
-JOIN_LEAGUE_THROTTLES = [AnonRateThrottle, UserRateThrottle, JoinLeagueThrottle]
+# `@throttle_classes` *replaces* the DEFAULT_THROTTLE_CLASSES for a view, so each
+# scoped view re-lists the baseline per-user throttle alongside its tighter scoped
+# one. These views require auth (anonymous requests are rejected at the permission
+# check before throttling runs), so no AnonRateThrottle is needed here.
+PREDICT_THROTTLES = [UserRateThrottle, PredictThrottle]
+JOIN_LEAGUE_THROTTLES = [UserRateThrottle, JoinLeagueThrottle]

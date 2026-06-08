@@ -152,14 +152,15 @@ REST_FRAMEWORK = {
         "rest_framework.permissions.IsAuthenticated",
     ],
     "UNAUTHENTICATED_USER": None,
-    # Baseline rate limits on every endpoint; abuse-prone writes add tighter
-    # scoped throttles via predictions/throttles.py.
+    # Every endpoint requires authentication, so DRF rejects anonymous requests at
+    # the permission check (before throttling) — an AnonRateThrottle here would
+    # never fire. We throttle per authenticated user instead, with tighter scoped
+    # limits on abuse-prone writes (predictions/throttles.py). Raw unauthenticated
+    # floods are a host/edge concern (Render/CDN rate limiting).
     "DEFAULT_THROTTLE_CLASSES": [
-        "rest_framework.throttling.AnonRateThrottle",
         "rest_framework.throttling.UserRateThrottle",
     ],
     "DEFAULT_THROTTLE_RATES": {
-        consts.THROTTLE_SCOPE_ANON: os.environ.get("THROTTLE_RATE_ANON", consts.THROTTLE_RATE_ANON),
         consts.THROTTLE_SCOPE_USER: os.environ.get("THROTTLE_RATE_USER", consts.THROTTLE_RATE_USER),
         consts.THROTTLE_SCOPE_PREDICT: os.environ.get("THROTTLE_RATE_PREDICT", consts.THROTTLE_RATE_PREDICT),
         consts.THROTTLE_SCOPE_JOIN: os.environ.get("THROTTLE_RATE_JOIN", consts.THROTTLE_RATE_JOIN),
