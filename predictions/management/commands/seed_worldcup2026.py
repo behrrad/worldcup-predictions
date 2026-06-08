@@ -137,6 +137,9 @@ class Command(BaseCommand):
                     "home_team": team_map.get(m.get("home_code")),
                     "away_team": team_map.get(m.get("away_code")),
                     "kickoff": kickoff,
+                    "venue": m.get("venue") or "",
+                    "home_label": m.get("home_label") or "",
+                    "away_label": m.get("away_label") or "",
                 },
             )
             if m["stage"] == "GROUP":

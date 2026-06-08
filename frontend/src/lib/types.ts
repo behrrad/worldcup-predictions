@@ -12,8 +12,11 @@ export interface MatchT {
   stage: string;
   stage_label: string;
   kickoff: string;
+  venue: string | null;
   home_team: TeamT | null;
   away_team: TeamT | null;
+  home_label: string | null;
+  away_label: string | null;
   home_score: number | null;
   away_score: number | null;
   is_finished: boolean;

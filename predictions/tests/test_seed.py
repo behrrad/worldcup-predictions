@@ -56,6 +56,38 @@ class SeedCommandTests(TestCase):
         call_command("seed_worldcup2026", verbosity=0)
         self.assertTrue(Team.objects.filter(name_fa="ایران", group="G").exists())
 
+    def test_loads_venues_and_bracket_labels(self):
+        call_command("seed_worldcup2026", verbosity=0)
+        comp = Competition.objects.get(slug=sd.WC2026_SLUG)
+        # every match has a venue
+        self.assertTrue(all(m.venue for m in comp.matches.all()))
+        # group matches have real teams, so no bracket labels
+        opener = comp.matches.get(match_number=1)
+        self.assertTrue(opener.venue)
+        self.assertEqual(opener.home_label, "")
+        # knockout matches carry English bracket-slot labels (translated in the API)
+        ko = comp.matches.get(match_number=73)
+        self.assertTrue(ko.home_label and ko.away_label)
+
+
+class BracketLabelTranslationTests(TestCase):
+    def test_translates_known_patterns(self):
+        cases = {
+            "Group A Winner": "صدرنشین گروه A",
+            "Group L Runner-up": "نایب‌قهرمان گروه L",
+            "Group A/B/C/D/F 3rd Place": "تیم سوم از گروه‌های A/B/C/D/F",
+            "Match 73 Winner": "برندهٔ بازی ۷۳",
+            "Match 101 Loser": "بازندهٔ بازی ۱۰۱",
+        }
+        for raw, expected in cases.items():
+            self.assertEqual(consts.bracket_label_fa(raw), expected)
+
+    def test_empty_label_is_unknown(self):
+        self.assertEqual(consts.bracket_label_fa(""), consts.BRACKET_UNKNOWN)
+
+    def test_unknown_pattern_is_echoed(self):
+        self.assertEqual(consts.bracket_label_fa("Some New Slot"), "Some New Slot")
+
     def test_seed_is_idempotent(self):
         call_command("seed_worldcup2026", verbosity=0)
         call_command("seed_worldcup2026", verbosity=0)  # re-runs upsert to the same state

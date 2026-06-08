@@ -7,6 +7,7 @@ window, membership roles, and all reusable strings/messages. Code elsewhere
 imports from this module instead of hardcoding literals, so tuning the league
 or editing wording happens in one place.
 """
+import re
 from decimal import Decimal
 
 
@@ -187,6 +188,9 @@ L_HOME_SCORE = "گل میزبان"
 L_AWAY_SCORE = "گل میهمان"
 L_STATUS = "وضعیت"
 L_MATCH_NUMBER = "شمارهٔ بازی"
+L_VENUE = "ورزشگاه"
+L_HOME_LABEL = "جایگاه میزبان (مرحلهٔ حذفی)"
+L_AWAY_LABEL = "جایگاه میهمان (مرحلهٔ حذفی)"
 
 L_LEAGUE = "مسابقهٔ پیش‌بینی"
 L_OWNER = "مدیر"
@@ -250,4 +254,47 @@ MSG_ADMIN_RECOMPUTED = "{n} امتیاز دوباره محاسبه شد."
 COL_SCORE = "نتیجه"
 COL_MEMBER_COUNT = "تعداد اعضا"
 COL_PREDICTION = "پیش‌بینی"
+
+
+# --------------------------------------------------------------------------- #
+# Knockout bracket-slot labels (Persian)
+# --------------------------------------------------------------------------- #
+# The schedule JSON stores English placeholders for knockout matches whose teams
+# aren't decided yet (e.g. "Group A Winner", "Match 73 Winner"). bracket_label_fa
+# turns those into Persian so the UI shows a meaningful slot instead of "؟".
+BRACKET_GROUP_WINNER = "صدرنشین گروه {group}"
+BRACKET_GROUP_RUNNER_UP = "نایب‌قهرمان گروه {group}"
+BRACKET_GROUP_THIRD = "تیم سوم از گروه‌های {groups}"
+BRACKET_MATCH_WINNER = "برندهٔ بازی {n}"
+BRACKET_MATCH_LOSER = "بازندهٔ بازی {n}"
+BRACKET_UNKNOWN = "نامشخص"  # empty/undecided slot
+
+_FA_DIGITS = str.maketrans("0123456789", "۰۱۲۳۴۵۶۷۸۹")
+
+
+def to_fa_digits(value) -> str:
+    """Render a number with Persian (Eastern Arabic) digits."""
+    return str(value).translate(_FA_DIGITS)
+
+
+def bracket_label_fa(label: str) -> str:
+    """Translate an English bracket-slot label to Persian.
+
+    Returns BRACKET_UNKNOWN for an empty label and echoes anything that doesn't
+    match a known pattern (so a new format degrades gracefully instead of
+    raising).
+    """
+    if not label:
+        return BRACKET_UNKNOWN
+    if m := re.fullmatch(r"Group ([A-L]) Winner", label):
+        return BRACKET_GROUP_WINNER.format(group=m.group(1))
+    if m := re.fullmatch(r"Group ([A-L]) Runner-up", label):
+        return BRACKET_GROUP_RUNNER_UP.format(group=m.group(1))
+    if m := re.fullmatch(r"Group ([A-L](?:/[A-L])*) 3rd Place", label):
+        return BRACKET_GROUP_THIRD.format(groups=m.group(1))
+    if m := re.fullmatch(r"Match (\d+) Winner", label):
+        return BRACKET_MATCH_WINNER.format(n=to_fa_digits(m.group(1)))
+    if m := re.fullmatch(r"Match (\d+) Loser", label):
+        return BRACKET_MATCH_LOSER.format(n=to_fa_digits(m.group(1)))
+    return label
 

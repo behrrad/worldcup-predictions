@@ -96,6 +96,12 @@ class Match(models.Model):
         consts.L_STATUS, max_length=12,
         choices=consts.MATCH_STATUS_CHOICES, default=consts.MatchStatus.SCHEDULED,
     )
+    venue = models.CharField(consts.L_VENUE, max_length=120, blank=True)
+    # Bracket-slot placeholders for knockout matches whose teams aren't known yet
+    # (e.g. "Group A Winner", "Match 73 Winner"). Stored as the source English
+    # labels; translated to Persian for display in the API layer.
+    home_label = models.CharField(consts.L_HOME_LABEL, max_length=60, blank=True)
+    away_label = models.CharField(consts.L_AWAY_LABEL, max_length=60, blank=True)
 
     class Meta:
         verbose_name = consts.V_MATCH

@@ -20,10 +20,11 @@ export default async function Matches({
             <div className="match-meta">
               <span className="stage-badge">{m.stage_label}</span>
               <span>{fmtDateTime(m.kickoff)}</span>
+              {m.venue && <span className="muted">📍 {m.venue}</span>}
             </div>
             <div className="match">
               <div className="team home">
-                <span>{m.home_team?.name ?? "؟"}</span>
+                <span>{m.home_team?.name ?? m.home_label ?? "؟"}</span>
                 <span className="flag">{m.home_team?.flag}</span>
               </div>
               <div className="vs">
@@ -37,7 +38,7 @@ export default async function Matches({
               </div>
               <div className="team away">
                 <span className="flag">{m.away_team?.flag}</span>
-                <span>{m.away_team?.name ?? "؟"}</span>
+                <span>{m.away_team?.name ?? m.away_label ?? "؟"}</span>
               </div>
             </div>
             <div className="match-meta" style={{ marginTop: 6 }}>
