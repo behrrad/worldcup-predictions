@@ -27,7 +27,7 @@ export default async function MembersPage({
         </thead>
         <tbody>
           {members.map((m) => (
-            <tr key={m.id} style={m.is_me ? { background: "#fffbeb" } : undefined}>
+            <tr key={m.id} className={m.is_me ? "me-row" : undefined}>
               <td className={`rank rank-${m.rank}`}>{fa(m.rank)}</td>
               <td>
                 <Link href={`/players/${m.id}`} className="member-cell">

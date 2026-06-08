@@ -51,6 +51,12 @@ There is **no Django session login** for end users and **no `<SignedIn>`/templat
 auth** — that earlier approach was removed. Django's own login is only for the
 **admin panel** (superusers).
 
+The **one exception** to "every endpoint needs a Clerk JWT" is the results export:
+`GET /api/export/<export_key>.xlsx` is public (`AllowAny`, no auth class) and gated
+solely by the league's unguessable `export_key`. The owner shares the key/link so
+anyone can download the standings spreadsheet. It's IP-rate-limited (`ExportThrottle`)
+and the builder hides predictions for matches that haven't locked yet.
+
 ---
 
 ## 3. File map (where things live)
@@ -67,6 +73,7 @@ auth** — that earlier approach was removed. Django's own login is only for the
 | `accounts/admin.py` | Admin for users. |
 | `predictions/models.py` | `Competition, Team, Match, League, Membership, Prediction, MatchScore`. |
 | `predictions/scoring.py` | **The scoring engine** + recompute + leaderboard. |
+| `predictions/export.py` | Builds a league's results **.xlsx** (member-per-3-columns layout). Blanks out predictions for matches that haven't locked yet. |
 | `predictions/signals.py` | On `Match` save → recompute everyone's scores. |
 | `predictions/api_views.py` | All JSON endpoints (function-based DRF views). |
 | `predictions/api_urls.py` | API routes (note: `<str:slug>`, not `<slug:slug>`). |

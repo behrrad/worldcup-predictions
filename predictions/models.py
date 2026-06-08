@@ -17,6 +17,11 @@ def generate_invite_code() -> str:
     )
 
 
+def generate_export_key() -> str:
+    """Return a URL-safe token used to download a league's results spreadsheet."""
+    return secrets.token_urlsafe(consts.EXPORT_KEY_BYTES)
+
+
 # --------------------------------------------------------------------------- #
 # The real-world football event (e.g. World Cup 2026)
 # --------------------------------------------------------------------------- #
@@ -161,6 +166,12 @@ class League(models.Model):
         consts.L_INVITE_CODE, max_length=16, unique=True,
         default=generate_invite_code, help_text=consts.HELP_INVITE_CODE,
     )
+    # Anyone holding this key can download the league's results .xlsx (a separate
+    # secret from the invite code, so sharing the export never lets someone join).
+    export_key = models.CharField(
+        consts.L_EXPORT_KEY, max_length=consts.EXPORT_KEY_MAX_LENGTH, unique=True,
+        default=generate_export_key, help_text=consts.HELP_EXPORT_KEY,
+    )
     members = models.ManyToManyField(
         settings.AUTH_USER_MODEL, through="Membership", related_name="leagues",
     )
@@ -236,6 +247,10 @@ class League(models.Model):
         # The user-facing league page is rendered by the Next.js frontend, not
         # Django, so point at FRONTEND_URL/l/<slug> (used by admin "View on site").
         return f"{settings.FRONTEND_URL}{consts.LEAGUE_DETAIL_PATH.format(slug=self.slug)}"
+
+    def export_path(self) -> str:
+        """Relative API path of this league's key-gated results download."""
+        return consts.EXPORT_PATH_TEMPLATE.format(key=self.export_key)
 
     # Map each stage to its configured multiplier field.
     @property

@@ -1,20 +1,28 @@
 import os
 import secrets
+from urllib.parse import quote
 
 from django.conf import settings
 from django.contrib.auth import get_user_model
 from django.db.models import Count
+from django.http import HttpResponse
 from django.shortcuts import get_object_or_404
 from django.utils import timezone
 from PIL import Image, UnidentifiedImageError
-from rest_framework.decorators import api_view, throttle_classes
+from rest_framework.decorators import (
+    api_view,
+    authentication_classes,
+    permission_classes,
+    throttle_classes,
+)
 from rest_framework.exceptions import NotFound, PermissionDenied, ValidationError
+from rest_framework.permissions import AllowAny
 from rest_framework.response import Response
 
 from accounts import consts as acc_consts
-from . import consts, scoring
+from . import consts, export, scoring
 from .models import Competition, League, Match, Membership, Prediction, Team
-from .throttles import JOIN_LEAGUE_THROTTLES, PREDICT_THROTTLES
+from .throttles import EXPORT_THROTTLES, JOIN_LEAGUE_THROTTLES, PREDICT_THROTTLES
 
 User = get_user_model()
 
@@ -109,7 +117,7 @@ def _match_dict(match, league, now, prediction=None, score=None):
     }
 
 
-def _league_dict(league, membership):
+def _league_dict(league, membership, request):
     return {
         "slug": league.slug,
         "name": league.name,
@@ -125,6 +133,10 @@ def _league_dict(league, membership):
         # Whether other members' predictions are shown after a match locks
         # (owner-toggleable). The frontend renders the toggle for the owner.
         "reveal_predictions": league.reveal_predictions,
+        # The export key/link is shared with the whole league — anyone can use it
+        # to download the results spreadsheet (upcoming picks stay hidden inside it).
+        "export_key": league.export_key,
+        "export_url": request.build_absolute_uri(league.export_path()),
         "scoring": {
             "points_exact": league.points_exact,
             "points_correct_diff": league.points_correct_diff,
@@ -343,7 +355,7 @@ def leagues(request):
     membership = Membership.objects.create(
         league=league, user=request.user, role=consts.Role.OWNER
     )
-    return Response(_league_dict(league, membership), status=201)
+    return Response(_league_dict(league, membership, request), status=201)
 
 
 @api_view(["POST"])
@@ -372,7 +384,7 @@ def league_detail(request, slug):
         if "reveal_predictions" in request.data:
             league.reveal_predictions = _as_bool(request.data.get("reveal_predictions"))
             league.save(update_fields=["reveal_predictions"])
-    return Response(_league_dict(league, membership))
+    return Response(_league_dict(league, membership, request))
 
 
 @api_view(["GET"])
@@ -453,6 +465,29 @@ def league_leaderboard(request, slug):
         for row in rows
     ]
     return Response(data)
+
+
+@api_view(["GET"])
+@authentication_classes([])      # public, key-gated: no Clerk token required
+@permission_classes([AllowAny])
+@throttle_classes(EXPORT_THROTTLES)
+def export_league(request, key):
+    """Download a league's results as an .xlsx file, gated only by its export key.
+
+    Deliberately public so the key can be shared with anyone (group chats, etc.).
+    It exposes no more than members already see in-app, and the builder blanks out
+    predictions for matches that haven't locked yet, so upcoming picks never leak."""
+    league = get_object_or_404(League, export_key=key)
+    content = export.league_xlsx_bytes(league)
+
+    response = HttpResponse(content, content_type=consts.EXPORT_CONTENT_TYPE)
+    filename = consts.EXPORT_FILENAME_TEMPLATE.format(slug=league.slug)
+    # Slugs may be Persian; RFC 5987 `filename*` keeps the non-ASCII name, with a
+    # plain ASCII `filename` fallback for older clients.
+    response["Content-Disposition"] = consts.EXPORT_CONTENT_DISPOSITION.format(
+        ascii=consts.EXPORT_FILENAME_FALLBACK, encoded=quote(filename),
+    )
+    return response
 
 
 @api_view(["GET"])

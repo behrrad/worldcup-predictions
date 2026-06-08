@@ -36,6 +36,17 @@ export default async function Overview({
         </div>
       )}
 
+      <div className="card mt">
+        <h2 className="card-title">📊 خروجی نتایج (اکسل)</h2>
+        <p className="muted">
+          فایل اکسل نتایج و پیش‌بینی‌ها را دانلود کن. پیش‌بینی بازی‌هایی که هنوز
+          شروع نشده‌اند در فایل پنهان می‌ماند.
+        </p>
+        <a className="btn btn-outline btn-block mt" href={league.export_url} download>
+          دانلود فایل اکسل
+        </a>
+      </div>
+
       <div className="grid grid-2 mt">
         <div className="card">
           <h2 className="card-title">⏭️ بازی‌های پیش رو</h2>
