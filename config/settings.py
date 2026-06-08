@@ -140,6 +140,14 @@ DATABASES = {
 # --------------------------------------------------------------------------- #
 AUTH_USER_MODEL = "accounts.User"
 
+# Accounts allowed into the in-app admin (manual result entry). Django staff and
+# superusers always qualify; this env var pins extra emails without a code change.
+ADMIN_EMAILS = [
+    e.strip().lower()
+    for e in os.environ.get("ADMIN_EMAILS", "").split(",")
+    if e.strip()
+]
+
 AUTH_PASSWORD_VALIDATORS = [
     {"NAME": "django.contrib.auth.password_validation.UserAttributeSimilarityValidator"},
     {

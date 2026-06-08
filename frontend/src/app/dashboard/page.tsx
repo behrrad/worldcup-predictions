@@ -4,12 +4,13 @@ import { currentUser } from "@clerk/nextjs/server";
 import { serverFetch } from "@/lib/server";
 import { fa } from "@/lib/format";
 import JoinLeague from "@/components/JoinLeague";
-import type { LeagueCard, CompetitionT } from "@/lib/types";
+import type { LeagueCard, CompetitionT, MeT } from "@/lib/types";
 
 export default async function Dashboard() {
-  const [leagues, competitions, user] = await Promise.all([
+  const [leagues, competitions, me, user] = await Promise.all([
     serverFetch("/leagues/") as Promise<LeagueCard[]>,
     serverFetch("/competitions/") as Promise<CompetitionT[]>,
+    serverFetch("/me/") as Promise<MeT>,
     currentUser(),
   ]);
 
@@ -22,6 +23,15 @@ export default async function Dashboard() {
         <h1>سلام {name} 👋</h1>
         <p>مسابقه‌های پیش‌بینی تو</p>
       </div>
+
+      {me.is_admin && (
+        <Link className="card tile" href="/admin/results">
+          <strong>🧮 ورود نتایج بازی‌ها (مدیر)</strong>
+          <div className="muted">
+            نتیجهٔ بازی‌ها را وارد کن تا امتیاز همه به‌روزرسانی شود.
+          </div>
+        </Link>
+      )}
 
       <div className="grid grid-2">
         <div className="card">

@@ -7,6 +7,31 @@ export interface TeamT {
   group: string;
 }
 
+export interface MeT {
+  email: string;
+  display_name: string;
+  public_name: string;
+  is_admin: boolean;
+}
+
+export interface AdminMatchT {
+  id: number;
+  match_number: number | null;
+  stage: string;
+  stage_label: string;
+  kickoff: string;
+  venue: string | null;
+  competition: { name: string; slug: string };
+  home_team: TeamT | null;
+  away_team: TeamT | null;
+  home_label: string | null;
+  away_label: string | null;
+  home_score: number | null;
+  away_score: number | null;
+  is_finished: boolean;
+  status: string;
+}
+
 export interface MatchT {
   id: number;
   stage: string;
