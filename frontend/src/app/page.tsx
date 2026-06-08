@@ -58,6 +58,9 @@ export default async function Home() {
             مراحل حذفی ضریب <strong>×{fa(1.5)}</strong> دارند — هیجان دوبرابر!
           </li>
         </ol>
+        <Link className="btn btn-outline mt" href="/how-it-works">
+          راهنمای کامل و قوانین امتیازدهی
+        </Link>
       </div>
     </>
   );

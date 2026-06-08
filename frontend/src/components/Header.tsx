@@ -14,6 +14,9 @@ export default function Header() {
           <span className="brand-text">پیش‌بینی جام جهانی</span>
         </Link>
         <nav className="nav">
+          <Link className="nav-link" href="/how-it-works">
+            راهنما
+          </Link>
           {!isLoaded ? null : isSignedIn ? (
             <>
               <Link className="nav-link" href="/dashboard">
