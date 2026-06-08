@@ -34,9 +34,20 @@ ALLOWED_HOSTS = [
     if h.strip()
 ]
 
+# Render injects the public hostname here; trust it automatically so we don't
+# have to hardcode the *.onrender.com URL before the service exists.
+RENDER_EXTERNAL_HOSTNAME = os.environ.get("RENDER_EXTERNAL_HOSTNAME")
+if RENDER_EXTERNAL_HOSTNAME:
+    ALLOWED_HOSTS.append(RENDER_EXTERNAL_HOSTNAME)
+    CSRF_TRUSTED_ORIGINS_DEFAULT = f"https://{RENDER_EXTERNAL_HOSTNAME}"
+else:
+    CSRF_TRUSTED_ORIGINS_DEFAULT = ""
+
 CSRF_TRUSTED_ORIGINS = [
     o.strip()
-    for o in os.environ.get("CSRF_TRUSTED_ORIGINS", "").split(",")
+    for o in os.environ.get(
+        "CSRF_TRUSTED_ORIGINS", CSRF_TRUSTED_ORIGINS_DEFAULT
+    ).split(",")
     if o.strip()
 ]
 
@@ -62,6 +73,9 @@ INSTALLED_APPS = [
 MIDDLEWARE = [
     "corsheaders.middleware.CorsMiddleware",
     "django.middleware.security.SecurityMiddleware",
+    # WhiteNoise serves the Django admin's static files in production (no CDN
+    # needed). Must sit right after SecurityMiddleware.
+    "whitenoise.middleware.WhiteNoiseMiddleware",
     "django.contrib.sessions.middleware.SessionMiddleware",
     "django.middleware.locale.LocaleMiddleware",
     "django.middleware.common.CommonMiddleware",
@@ -103,6 +117,8 @@ DATABASES = {
             "postgres://worldcup:worldcup@localhost:5432/worldcup",
         ),
         conn_max_age=600,
+        # Supabase requires TLS. Enabled whenever we're not in local DEBUG.
+        ssl_require=not DEBUG,
     )
 }
 
@@ -178,6 +194,14 @@ USE_TZ = True
 # --------------------------------------------------------------------------- #
 STATIC_URL = "static/"
 STATIC_ROOT = BASE_DIR / "staticfiles"
+
+# WhiteNoise: compress + hash static files so the admin panel works in prod.
+STORAGES = {
+    "default": {"BACKEND": "django.core.files.storage.FileSystemStorage"},
+    "staticfiles": {
+        "BACKEND": "whitenoise.storage.CompressedManifestStaticFilesStorage",
+    },
+}
 
 DEFAULT_AUTO_FIELD = "django.db.models.BigAutoField"
 
