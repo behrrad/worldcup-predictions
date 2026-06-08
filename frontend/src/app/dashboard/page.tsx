@@ -31,8 +31,8 @@ export default async function Dashboard() {
         <div className="card">
           <h2 className="card-title">➕ ساخت مسابقهٔ جدید</h2>
           <p className="muted">
-            یک مسابقهٔ جدید بساز و مدیر آن باش؛ یک کد دعوت برای دوستانت ساخته
-            می‌شود.
+            یک مسابقهٔ جدید بساز و مدیرش باش؛ یک کد دعوت می‌گیری تا دوستانت را
+            دعوت کنی.
           </p>
           {hasCompetitions ? (
             <Link className="btn btn-primary btn-block" href="/leagues/new">
@@ -40,7 +40,7 @@ export default async function Dashboard() {
             </Link>
           ) : (
             <div className="alert alert-warning">
-              هنوز هیچ تورنمنتی تعریف نشده است. ابتدا داده‌های جام را وارد کنید.
+              هنوز هیچ تورنمنتی تعریف نشده؛ فعلاً نمی‌توانی مسابقه بسازی.
             </div>
           )}
         </div>

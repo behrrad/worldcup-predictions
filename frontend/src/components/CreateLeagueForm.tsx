@@ -38,7 +38,7 @@ export default function CreateLeagueForm({
       });
       router.push(`/l/${res.slug}`);
     } catch {
-      setError("ساخت مسابقه ناموفق بود. ورودی‌ها را بررسی کنید.");
+      setError("ساخت مسابقه ناموفق بود. ورودی‌ها را بررسی کن.");
       setLoading(false);
     }
   }

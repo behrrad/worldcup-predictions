@@ -68,7 +68,7 @@ export default async function Matches({
           </div>
         ))
       ) : (
-        <div className="empty">بازی‌ای نیست.</div>
+        <div className="empty">هنوز بازی‌ای برای نمایش نیست.</div>
       )}
     </div>
   );
