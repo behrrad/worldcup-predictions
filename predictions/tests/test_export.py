@@ -171,6 +171,33 @@ class ExportBuilderTests(TestCase):
         self.assertIsNone(ws.cell(row=r, column=ap).value)          # not finished
         self.assertIsNone(ws.cell(row=r, column=consts.EXPORT_COL_ACTUAL_HOME).value)
 
+    def test_result_entered_before_lock_stays_hidden(self):
+        # Anomalous but possible: a result is entered while the match is still
+        # before its lock time (kickoff in the future). Reveal is keyed off the
+        # lock time, so the pick, the result AND the points must all stay hidden —
+        # and the leaked points must not appear in the member's total either.
+        home = make_team(self.comp, name="مراکش")
+        away = make_team(self.comp, name="کرواسی")
+        m = make_match(self.comp, home=home, away=away,
+                       kickoff=self.now + timedelta(hours=2))   # lock is still future
+        Prediction.objects.create(membership=self.m_owner, match=m,
+                                  predicted_home=2, predicted_away=1)
+        m.home_score, m.away_score = 2, 1
+        m.save()  # finished early -> a MatchScore (10 pts) now exists for Alice
+
+        ws = self._build()
+        cols = _name_to_col(ws)
+        r = _row_by_home(ws, "مراکش")
+
+        # Row shows only the fixture.
+        self.assertIsNone(ws.cell(row=r, column=consts.EXPORT_COL_ACTUAL_HOME).value)
+        for off in range(consts.EXPORT_COLS_PER_MEMBER):
+            self.assertIsNone(ws.cell(row=r, column=cols["آلیس"] + off).value,
+                              "an early result must not reveal the pick/points pre-lock")
+        # ...and the hidden points do not leak into the total.
+        self.assertEqual(
+            ws.cell(row=consts.EXPORT_TOTAL_ROW, column=cols["آلیس"]).value, 0.0)
+
     def test_undecided_knockout_uses_bracket_label(self):
         m = make_match(self.comp, stage=consts.Stage.FINAL,
                        kickoff=self.now + timedelta(days=3))
