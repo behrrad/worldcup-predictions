@@ -76,6 +76,9 @@ export default async function Overview({
           <Link className="btn btn-pitch btn-block mt" href={`/l/${slug}/predictions`}>
             ثبت پیش‌بینی
           </Link>
+          <Link className="btn btn-outline btn-block mt" href={`/l/${slug}/all-predictions`}>
+            👁️ پیش‌بینی همه را ببین
+          </Link>
         </div>
 
         <div className="card">
