@@ -82,10 +82,13 @@ export interface MatchDetailResp {
   match: MatchT;
   revealed: boolean;
   lock_time: string;
+  member_count: number;
+  // Before lock: `name`/`is_me` are set but `home`/`away`/`points` are null
+  // (we show who predicted, not what). After lock everything is filled in.
   predictions: {
     name: string;
-    home: number;
-    away: number;
+    home: number | null;
+    away: number | null;
     points: number | null;
     tier_label: string | null;
     is_me: boolean;

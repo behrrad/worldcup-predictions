@@ -181,18 +181,45 @@ class MatchDetailRevealTests(AuthedTestCase):
         self.now = timezone.now()
 
     def test_hidden_before_lock(self):
+        # Before lock the predictor is listed by name, but the score is hidden.
         m = make_match(self.comp, kickoff=self.now + timedelta(hours=2))
         Prediction.objects.create(membership=self.mem, match=m, predicted_home=1, predicted_away=0)
-        res = self.client.get(reverse("api_match_detail", args=[self.league.slug, m.id]))
-        self.assertFalse(res.json()["revealed"])
-        self.assertEqual(res.json()["predictions"], [])
+        body = self.client.get(
+            reverse("api_match_detail", args=[self.league.slug, m.id])
+        ).json()
+        self.assertFalse(body["revealed"])
+        self.assertEqual(len(body["predictions"]), 1)
+        row = body["predictions"][0]
+        self.assertTrue(row["is_me"])
+        self.assertIsNone(row["home"])
+        self.assertIsNone(row["away"])
+        self.assertIsNone(row["points"])
 
     def test_revealed_after_lock(self):
         m = make_match(self.comp, kickoff=self.now - timedelta(minutes=5))
         Prediction.objects.create(membership=self.mem, match=m, predicted_home=1, predicted_away=0)
-        res = self.client.get(reverse("api_match_detail", args=[self.league.slug, m.id]))
-        self.assertTrue(res.json()["revealed"])
-        self.assertEqual(len(res.json()["predictions"]), 1)
+        body = self.client.get(
+            reverse("api_match_detail", args=[self.league.slug, m.id])
+        ).json()
+        self.assertTrue(body["revealed"])
+        self.assertEqual(len(body["predictions"]), 1)
+        self.assertEqual(body["predictions"][0]["home"], 1)
+        self.assertEqual(body["predictions"][0]["away"], 0)
+
+    def test_other_members_names_shown_scores_hidden_before_lock(self):
+        # A second member's prediction: name visible, pick hidden until lock.
+        other = join(self.league)
+        m = make_match(self.comp, kickoff=self.now + timedelta(hours=2))
+        Prediction.objects.create(membership=other, match=m, predicted_home=3, predicted_away=2)
+        body = self.client.get(
+            reverse("api_match_detail", args=[self.league.slug, m.id])
+        ).json()
+        self.assertFalse(body["revealed"])
+        self.assertEqual(body["member_count"], 2)
+        row = next(r for r in body["predictions"] if r["name"] == other.user.public_name)
+        self.assertFalse(row["is_me"])
+        self.assertIsNone(row["home"])  # score stays hidden
+        self.assertIsNone(row["away"])
 
 
 class ThrottleTests(AuthedTestCase):

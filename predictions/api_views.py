@@ -269,29 +269,36 @@ def match_detail(request, slug, match_id):
     match = get_object_or_404(Match, id=match_id, competition=league.competition)
     now = timezone.now()
 
+    # A match's picks are revealed once it locks (default: 30m before kickoff).
+    # Before that we still list *who* has predicted — names only, scores hidden —
+    # so members can see participation without copying anyone's prediction.
     revealed = not match.is_open_for(league.lock_minutes, now)
-    others = []
-    if revealed:
-        scores = {s.membership_id: s for s in match.scores.all()}
-        qs = (
-            Prediction.objects.filter(match=match, membership__league=league)
-            .select_related("membership", "membership__user")
-        )
-        for p in qs:
-            s = scores.get(p.membership_id)
-            others.append({
-                "name": p.membership.user.public_name,
-                "home": p.predicted_home,
-                "away": p.predicted_away,
-                "points": float(s.points) if s else None,
-                "tier_label": consts.TIER_LABELS.get(s.tier) if s else None,
-                "is_me": p.membership_id == membership.id,
-            })
+    scores = {s.membership_id: s for s in match.scores.all()} if revealed else {}
+    qs = (
+        Prediction.objects.filter(match=match, membership__league=league)
+        .select_related("membership", "membership__user")
+    )
 
-    my_pred = Prediction.objects.filter(membership=membership, match=match).first()
+    my_pred = None
+    others = []
+    for p in qs:
+        if p.membership_id == membership.id:
+            my_pred = p
+        s = scores.get(p.membership_id) if revealed else None
+        others.append({
+            "name": p.membership.user.public_name,
+            "is_me": p.membership_id == membership.id,
+            # Scores stay hidden until the match locks.
+            "home": p.predicted_home if revealed else None,
+            "away": p.predicted_away if revealed else None,
+            "points": float(s.points) if s else None,
+            "tier_label": consts.TIER_LABELS.get(s.tier) if s else None,
+        })
+
     return Response({
         "match": _match_dict(match, league, now, my_pred),
         "revealed": revealed,
         "lock_time": match.lock_time(league.lock_minutes).isoformat(),
+        "member_count": league.memberships.count(),
         "predictions": others,
     })
