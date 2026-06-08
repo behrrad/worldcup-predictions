@@ -229,6 +229,39 @@ EXPORT_CONTENT_DISPOSITION = "attachment; filename=\"{ascii}\"; filename*=UTF-8'
 # Relative API path of the public download (frontend prepends the API base).
 EXPORT_PATH_TEMPLATE = "/api/export/{key}.xlsx"
 
+# --- Spreadsheet styling (mirrors the shared league template's colour scheme) --
+# Colours are ARGB-friendly hex (no leading '#'); openpyxl accepts 6-digit RGB.
+EXPORT_STYLE_RTL = True                  # Persian content reads right-to-left
+EXPORT_LABEL_TOTAL = "مجموع امتیاز"       # row-2 label over the fixture columns
+
+EXPORT_COLOR_TITLE_BG = "800B02"         # deep maroon banner (A1)
+EXPORT_COLOR_TITLE_FG = "E9C84A"         # gold title text
+EXPORT_COLOR_HEADER_BG = "BA9920"        # gold member-name headers (row 1)
+EXPORT_COLOR_HEADER_FG = "2B2B2B"
+EXPORT_COLOR_TOTAL_BG = "EFE2B8"         # pale gold standings band (row 2)
+EXPORT_COLOR_TOTAL_FG = "5A3A00"
+EXPORT_COLOR_TEAM_BG = "FFC000"          # amber home/away team cells
+EXPORT_COLOR_TEAM_FG = "373737"
+EXPORT_COLOR_RESULT_BG = "002060"        # navy actual-score cells
+EXPORT_COLOR_RESULT_FG = "FFFFFF"
+EXPORT_COLOR_PRED_BG = "FFF7E6"          # light cream predicted-score cells
+EXPORT_COLOR_PRED_FG = "373737"
+EXPORT_COLOR_POINTS_BG = "BFBFBF"        # grey points cells
+EXPORT_COLOR_POINTS_FG = "1A1A1A"
+EXPORT_COLOR_BORDER = "D9D9D9"           # light grid lines
+
+EXPORT_TITLE_FONT_SIZE = 14
+EXPORT_TOTAL_FONT_SIZE = 13
+EXPORT_HEADER_FONT_SIZE = 11
+EXPORT_BODY_FONT_SIZE = 11
+EXPORT_POINTS_FONT_SIZE = 9
+
+EXPORT_WIDTH_TEAM = 16                    # columns A, B (team names)
+EXPORT_WIDTH_RESULT = 4.5                 # columns C, D (actual score)
+EXPORT_WIDTH_PRED = 4.5                   # each member's predicted home/away
+EXPORT_WIDTH_POINTS = 6                   # each member's points
+EXPORT_TITLE_ROW_HEIGHT = 22
+
 
 # --------------------------------------------------------------------------- #
 # Frontend paths (relative to settings.FRONTEND_URL)
