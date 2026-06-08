@@ -241,6 +241,29 @@ STORAGES = {
     },
 }
 
+
+# --------------------------------------------------------------------------- #
+# Media (user uploads — profile avatars)
+# --------------------------------------------------------------------------- #
+MEDIA_URL = os.environ.get("MEDIA_URL", "/media/")
+MEDIA_ROOT = BASE_DIR / "media"
+
+# When Supabase Storage (S3-compatible) is configured we store user uploads
+# there. Render's filesystem is ephemeral, so the local FileSystemStorage
+# fallback (used in dev/tests) would lose avatars on every deploy. Set the
+# SUPABASE_S3_* env vars in production to switch the default storage to S3.
+SUPABASE_S3_BUCKET = os.environ.get("SUPABASE_S3_BUCKET", "")
+if SUPABASE_S3_BUCKET:
+    AWS_STORAGE_BUCKET_NAME = SUPABASE_S3_BUCKET
+    AWS_S3_ENDPOINT_URL = os.environ.get("SUPABASE_S3_ENDPOINT", "")
+    AWS_S3_REGION_NAME = os.environ.get("SUPABASE_S3_REGION", "")
+    AWS_ACCESS_KEY_ID = os.environ.get("SUPABASE_S3_ACCESS_KEY_ID", "")
+    AWS_SECRET_ACCESS_KEY = os.environ.get("SUPABASE_S3_SECRET_ACCESS_KEY", "")
+    AWS_S3_FILE_OVERWRITE = False
+    AWS_DEFAULT_ACL = None
+    AWS_QUERYSTRING_AUTH = False  # public bucket -> stable, shareable URLs
+    STORAGES["default"] = {"BACKEND": "storages.backends.s3.S3Boto3Storage"}
+
 DEFAULT_AUTO_FIELD = "django.db.models.BigAutoField"
 
 # Production-leaning security toggles (enabled automatically when DEBUG is off).

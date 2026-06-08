@@ -214,7 +214,16 @@ class League(models.Model):
 
     def save(self, *args, **kwargs):
         if not self.slug:
-            self.slug = slugify(self.name, allow_unicode=True) or "league"
+            # Slugs are unique; two leagues sharing a name (e.g. "Friends") would
+            # otherwise collide and raise IntegrityError on create. Append a
+            # numeric suffix until the slug is free.
+            base = slugify(self.name, allow_unicode=True) or "league"
+            slug = base
+            n = 2
+            while League.objects.filter(slug=slug).exclude(pk=self.pk).exists():
+                slug = f"{base}-{n}"
+                n += 1
+            self.slug = slug
         super().save(*args, **kwargs)
 
     def get_absolute_url(self):

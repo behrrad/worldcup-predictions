@@ -6,6 +6,8 @@ const isProtected = createRouteMatcher([
   "/dashboard(.*)",
   "/l/(.*)",
   "/leagues/(.*)",
+  "/players(.*)",
+  "/profile(.*)",
 ]);
 
 // Next.js 16 renamed Middleware -> Proxy; Clerk's middleware works as the default export.

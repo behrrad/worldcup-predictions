@@ -31,6 +31,15 @@ class SlugTests(TestCase):
         self.assertTrue(league.slug)  # unicode slug allowed
         self.assertIn("رفقای", league.slug)
 
+    def test_duplicate_names_get_unique_slugs(self):
+        # Two leagues with the same name must not collide on the unique slug.
+        comp = make_competition()
+        a = make_league(comp, name="Friends")
+        b = make_league(comp, name="Friends")
+        self.assertNotEqual(a.slug, b.slug)
+        self.assertEqual(a.slug, "friends")
+        self.assertEqual(b.slug, "friends-2")
+
 
 class AbsoluteUrlTests(TestCase):
     def test_points_at_frontend_league_page(self):

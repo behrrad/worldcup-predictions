@@ -21,6 +21,8 @@ class UserAdmin(BaseUserAdmin):
         (None, {"fields": ("email", "password")}),
         (consts.ADMIN_SECTION_PERSONAL, {"fields": ("display_name", "clerk_id",
                                                     "first_name", "last_name")}),
+        (consts.ADMIN_SECTION_PROFILE, {"fields": ("avatar", "bio", "location",
+                                                   "social_handle", "favorite_team")}),
         (consts.ADMIN_SECTION_PERMISSIONS, {"fields": ("is_active", "is_staff", "is_superuser",
                                                        "groups", "user_permissions")}),
         (consts.ADMIN_SECTION_DATES, {"fields": ("last_login", "date_joined")}),

@@ -119,3 +119,53 @@ export interface MatchDetailResp {
     is_me: boolean;
   }[];
 }
+
+export interface Profile {
+  id: number;
+  email: string;
+  display_name: string;
+  public_name: string;
+  avatar: string | null;
+  bio: string;
+  location: string;
+  social_handle: string;
+  favorite_team: TeamT | null;
+  joined_at: string;
+}
+
+export interface PlayerCard {
+  id: number;
+  public_name: string;
+  avatar: string | null;
+  location: string;
+  favorite_team: TeamT | null;
+  league_count: number;
+}
+
+export interface SharedLeague {
+  slug: string;
+  name: string;
+  competition: string;
+}
+
+export interface PlayerDetail {
+  profile: Profile;
+  is_me: boolean;
+  stats: { leagues: number; predictions: number };
+  shared_leagues: SharedLeague[];
+}
+
+export interface MemberRow {
+  rank: number;
+  id: number;
+  name: string;
+  avatar: string | null;
+  favorite_team: TeamT | null;
+  role: string;
+  role_label: string;
+  joined_at: string;
+  total: number;
+  played: number;
+  exact_count: number;
+  is_me: boolean;
+}

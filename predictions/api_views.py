@@ -1,13 +1,22 @@
+import os
+import secrets
+
 from django.conf import settings
+from django.contrib.auth import get_user_model
+from django.db.models import Count
 from django.shortcuts import get_object_or_404
 from django.utils import timezone
+from PIL import Image, UnidentifiedImageError
 from rest_framework.decorators import api_view, throttle_classes
 from rest_framework.exceptions import NotFound, PermissionDenied, ValidationError
 from rest_framework.response import Response
 
+from accounts import consts as acc_consts
 from . import consts, scoring
-from .models import Competition, League, Match, Membership, Prediction
+from .models import Competition, League, Match, Membership, Prediction, Team
 from .throttles import JOIN_LEAGUE_THROTTLES, PREDICT_THROTTLES
+
+User = get_user_model()
 
 
 # --------------------------------------------------------------------------- #
@@ -23,6 +32,50 @@ def _team(team):
         "code": team.code,
         "flag": team.flag_emoji,
         "group": team.group,
+    }
+
+
+def _avatar_url(user, request):
+    """Absolute URL to a user's avatar, or None. (S3 URLs are already absolute;
+    build_absolute_uri leaves them untouched and prefixes local MEDIA paths.)"""
+    if not user.avatar:
+        return None
+    return request.build_absolute_uri(user.avatar.url)
+
+
+def _profile(user, request):
+    """Full profile of a single user (own profile or another player's).
+
+    Email is private: it's only returned on the requester's own profile, never
+    when viewing another player (so the players directory can't be scraped for
+    everyone's email address)."""
+    is_self = user.id == request.user.id
+    return {
+        "id": user.id,
+        # email and admin flag are private: only returned on one's own profile.
+        "email": user.email if is_self else "",
+        "is_admin": _is_admin(user) if is_self else False,
+        "display_name": user.display_name,
+        "public_name": user.public_name,
+        "avatar": _avatar_url(user, request),
+        "bio": user.bio,
+        "location": user.location,
+        "social_handle": user.social_handle,
+        "favorite_team": _team(user.favorite_team),
+        "joined_at": user.date_joined.isoformat(),
+    }
+
+
+def _player_card(user, request):
+    """Compact player summary for the global players directory."""
+    return {
+        "id": user.id,
+        "public_name": user.public_name,
+        "avatar": _avatar_url(user, request),
+        "location": user.location,
+        "favorite_team": _team(user.favorite_team),
+        # `league_count` is annotated by the players() query.
+        "league_count": getattr(user, "league_count", 0),
     }
 
 
@@ -112,14 +165,133 @@ def _get_membership(request, slug):
 # --------------------------------------------------------------------------- #
 # Endpoints
 # --------------------------------------------------------------------------- #
-@api_view(["GET"])
+def _clean(value, max_length):
+    """Trim whitespace and cap length so we never overflow a DB column."""
+    return (value or "").strip()[:max_length]
+
+
+def _update_profile(user, data):
+    """Apply a partial profile update from a PATCH body. Only keys present in the
+    body are touched, so the same endpoint handles single- and multi-field edits."""
+    if "display_name" in data:
+        user.display_name = _clean(data.get("display_name"), 60)
+    if "bio" in data:
+        bio = (data.get("bio") or "").strip()
+        if len(bio) > acc_consts.BIO_MAX_LENGTH:
+            raise ValidationError({"bio": acc_consts.ERR_BIO_TOO_LONG})
+        user.bio = bio
+    if "location" in data:
+        user.location = _clean(data.get("location"), acc_consts.LOCATION_MAX_LENGTH)
+    if "social_handle" in data:
+        user.social_handle = _clean(data.get("social_handle"), acc_consts.SOCIAL_MAX_LENGTH)
+    if "favorite_team_id" in data:
+        team_id = data.get("favorite_team_id")
+        if team_id in (None, "", 0):
+            user.favorite_team = None
+        else:
+            try:
+                user.favorite_team = Team.objects.get(id=team_id)
+            except (Team.DoesNotExist, ValueError, TypeError):
+                raise ValidationError(
+                    {"favorite_team_id": acc_consts.ERR_FAVORITE_TEAM_INVALID}
+                )
+    user.save()
+
+
+@api_view(["GET", "PATCH"])
 def me(request):
+    """The signed-in user's own profile — GET to read, PATCH to edit text fields.
+    (The avatar image is uploaded separately via my_avatar.)"""
     user = request.user
+    if request.method == "PATCH":
+        _update_profile(user, request.data)
+    return Response(_profile(user, request))
+
+
+@api_view(["POST", "DELETE"])
+def my_avatar(request):
+    """Upload (multipart `avatar`) or remove the signed-in user's profile photo."""
+    user = request.user
+
+    if request.method == "DELETE":
+        if user.avatar:
+            user.avatar.delete(save=False)
+            user.save(update_fields=["avatar"])
+        return Response(_profile(user, request))
+
+    upload = request.FILES.get("avatar")
+    if not upload:
+        raise ValidationError({"avatar": acc_consts.ERR_AVATAR_REQUIRED})
+    if upload.size > acc_consts.AVATAR_MAX_BYTES:
+        raise ValidationError({"avatar": acc_consts.ERR_AVATAR_TOO_LARGE})
+    if upload.content_type not in acc_consts.AVATAR_CONTENT_TYPES:
+        raise ValidationError({"avatar": acc_consts.ERR_AVATAR_BAD_TYPE})
+    # Don't trust the declared content type — confirm it's a real, decodable image.
+    try:
+        Image.open(upload).verify()
+    except (UnidentifiedImageError, OSError, ValueError):
+        raise ValidationError({"avatar": acc_consts.ERR_AVATAR_BAD_TYPE})
+    upload.seek(0)  # verify() consumed the stream
+
+    ext = os.path.splitext(upload.name)[1].lower()
+    if ext not in acc_consts.AVATAR_EXTENSIONS:
+        ext = acc_consts.AVATAR_DEFAULT_EXTENSION
+    # A random suffix both avoids collisions and busts the browser/CDN cache.
+    filename = f"user_{user.id}_{secrets.token_hex(4)}{ext}"
+    if user.avatar:
+        user.avatar.delete(save=False)
+    user.avatar.save(filename, upload, save=True)
+    return Response(_profile(user, request))
+
+
+@api_view(["GET"])
+def teams(request):
+    """Teams of the active competition(s) — used by the favorite-team picker."""
+    qs = Team.objects.filter(competition__is_active=True).order_by("group", "name_fa")
+    return Response([_team(t) for t in qs])
+
+
+@api_view(["GET"])
+def players(request):
+    """Global directory of every active player."""
+    users = (
+        User.objects.filter(is_active=True)
+        .select_related("favorite_team")
+        .annotate(league_count=Count("memberships", distinct=True))
+        .order_by("display_name", "email")
+    )
+    return Response([_player_card(u, request) for u in users])
+
+
+@api_view(["GET"])
+def player_detail(request, user_id):
+    """A single player's public profile plus the leagues they share with me."""
+    user = get_object_or_404(
+        User.objects.select_related("favorite_team"), id=user_id, is_active=True
+    )
+    my_league_ids = Membership.objects.filter(user=request.user).values_list(
+        "league_id", flat=True
+    )
+    shared = (
+        Membership.objects.filter(user=user, league_id__in=my_league_ids)
+        .select_related("league", "league__competition")
+        .order_by("-joined_at")
+    )
     return Response({
-        "email": user.email,
-        "display_name": user.display_name,
-        "public_name": user.public_name,
-        "is_admin": _is_admin(user),
+        "profile": _profile(user, request),
+        "is_me": user.id == request.user.id,
+        "stats": {
+            "leagues": Membership.objects.filter(user=user).count(),
+            "predictions": Prediction.objects.filter(membership__user=user).count(),
+        },
+        "shared_leagues": [
+            {
+                "slug": m.league.slug,
+                "name": m.league.name,
+                "competition": m.league.competition.name,
+            }
+            for m in shared
+        ],
     })
 
 
@@ -261,6 +433,40 @@ def league_leaderboard(request, slug):
         }
         for row in rows
     ]
+    return Response(data)
+
+
+@api_view(["GET"])
+def league_members(request, slug):
+    """Members of a league with their profile summary + standing in this league."""
+    membership = _get_membership(request, slug)
+    league = membership.league
+
+    rows = scoring.leaderboard(league)  # ranked rows carry the Membership objects
+    users = {
+        u.id: u
+        for u in User.objects.filter(
+            id__in=[r["membership"].user_id for r in rows]
+        ).select_related("favorite_team")
+    }
+    data = []
+    for row in rows:
+        m = row["membership"]
+        user = users[m.user_id]
+        data.append({
+            "rank": row["rank"],
+            "id": user.id,
+            "name": user.public_name,
+            "avatar": _avatar_url(user, request),
+            "favorite_team": _team(user.favorite_team),
+            "role": m.role,
+            "role_label": consts.ROLE_LABELS.get(m.role),
+            "joined_at": m.joined_at.isoformat(),
+            "total": float(row["total"]),
+            "played": row["played"],
+            "exact_count": row["exact_count"],
+            "is_me": m.user_id == request.user.id,
+        })
     return Response(data)
 
 
