@@ -43,10 +43,14 @@ def _avatar_url(user, request):
 
 
 def _profile(user, request):
-    """Full profile of a single user (own profile or another player's)."""
+    """Full profile of a single user (own profile or another player's).
+
+    Email is private: it's only returned on the requester's own profile, never
+    when viewing another player (so the players directory can't be scraped for
+    everyone's email address)."""
     return {
         "id": user.id,
-        "email": user.email,
+        "email": user.email if user.id == request.user.id else "",
         "display_name": user.display_name,
         "public_name": user.public_name,
         "avatar": _avatar_url(user, request),

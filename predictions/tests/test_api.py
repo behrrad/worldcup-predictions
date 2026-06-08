@@ -464,6 +464,18 @@ class PlayerDetailTests(AuthedTestCase):
         ).json()
         self.assertEqual(body["shared_leagues"], [])
 
+    def test_email_hidden_for_other_players(self):
+        # Email is private: visible on my own profile, blank for anyone else.
+        other = make_user(email="secret@test.com")
+        body = self.client.get(
+            reverse("api_player_detail", args=[other.id])
+        ).json()
+        self.assertEqual(body["profile"]["email"], "")
+        mine = self.client.get(
+            reverse("api_player_detail", args=[self.user.id])
+        ).json()
+        self.assertEqual(mine["profile"]["email"], "me@test.com")
+
     def test_missing_player_404(self):
         res = self.client.get(reverse("api_player_detail", args=[999999]))
         self.assertEqual(res.status_code, 404)
