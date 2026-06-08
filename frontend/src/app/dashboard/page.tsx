@@ -40,7 +40,7 @@ export default async function Dashboard() {
             </Link>
           ) : (
             <div className="alert alert-warning">
-              هنوز هیچ تورنمنتی تعریف نشده. اول باید داده‌های جام وارد شود.
+              هنوز هیچ تورنمنتی تعریف نشده؛ فعلاً نمی‌توانی مسابقه بسازی.
             </div>
           )}
         </div>
