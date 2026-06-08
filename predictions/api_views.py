@@ -1,11 +1,12 @@
 from django.shortcuts import get_object_or_404
 from django.utils import timezone
-from rest_framework.decorators import api_view
+from rest_framework.decorators import api_view, throttle_classes
 from rest_framework.exceptions import NotFound, ValidationError
 from rest_framework.response import Response
 
 from . import consts, scoring
 from .models import Competition, League, Match, Membership, Prediction
+from .throttles import JoinLeagueThrottle, PredictThrottle
 
 
 # --------------------------------------------------------------------------- #
@@ -156,6 +157,7 @@ def leagues(request):
 
 
 @api_view(["POST"])
+@throttle_classes([JoinLeagueThrottle])
 def join_league(request):
     code = (request.data.get("invite_code") or "").strip().upper()
     try:
@@ -196,6 +198,7 @@ def league_matches(request, slug):
 
 
 @api_view(["POST"])
+@throttle_classes([PredictThrottle])
 def submit_predictions(request, slug):
     membership = _get_membership(request, slug)
     league = membership.league

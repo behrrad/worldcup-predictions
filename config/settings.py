@@ -5,8 +5,11 @@ Django settings for the World Cup prediction league (پیش‌بینی جام ج
 from pathlib import Path
 
 import dj_database_url
+from django.core.exceptions import ImproperlyConfigured
 from dotenv import load_dotenv
 import os
+
+from predictions import consts
 
 BASE_DIR = Path(__file__).resolve().parent.parent
 
@@ -149,6 +152,18 @@ REST_FRAMEWORK = {
         "rest_framework.permissions.IsAuthenticated",
     ],
     "UNAUTHENTICATED_USER": None,
+    # Baseline rate limits on every endpoint; abuse-prone writes add tighter
+    # scoped throttles via predictions/throttles.py.
+    "DEFAULT_THROTTLE_CLASSES": [
+        "rest_framework.throttling.AnonRateThrottle",
+        "rest_framework.throttling.UserRateThrottle",
+    ],
+    "DEFAULT_THROTTLE_RATES": {
+        consts.THROTTLE_SCOPE_ANON: os.environ.get("THROTTLE_RATE_ANON", consts.THROTTLE_RATE_ANON),
+        consts.THROTTLE_SCOPE_USER: os.environ.get("THROTTLE_RATE_USER", consts.THROTTLE_RATE_USER),
+        consts.THROTTLE_SCOPE_PREDICT: os.environ.get("THROTTLE_RATE_PREDICT", consts.THROTTLE_RATE_PREDICT),
+        consts.THROTTLE_SCOPE_JOIN: os.environ.get("THROTTLE_RATE_JOIN", consts.THROTTLE_RATE_JOIN),
+    },
 }
 
 CORS_ALLOWED_ORIGINS = [
@@ -183,7 +198,22 @@ DEFAULT_AUTO_FIELD = "django.db.models.BigAutoField"
 
 # Production-leaning security toggles (enabled automatically when DEBUG is off).
 if not DEBUG:
+    # Refuse to boot in production with the insecure dev SECRET_KEY — a strong
+    # key MUST come from the environment / secret manager.
+    if SECRET_KEY.startswith("django-insecure-"):
+        raise ImproperlyConfigured(
+            "Set a strong SECRET_KEY environment variable in production "
+            "(the insecure development default is still in use)."
+        )
+
     SECURE_SSL_REDIRECT = env_bool("SECURE_SSL_REDIRECT", True)
     SESSION_COOKIE_SECURE = True
     CSRF_COOKIE_SECURE = True
     SECURE_PROXY_SSL_HEADER = ("HTTP_X_FORWARDED_PROTO", "https")
+    SECURE_CONTENT_TYPE_NOSNIFF = True
+
+    # HTTP Strict Transport Security. Defaults to 1 year; set SECURE_HSTS_SECONDS=0
+    # to disable while validating TLS on a new domain.
+    SECURE_HSTS_SECONDS = int(os.environ.get("SECURE_HSTS_SECONDS", 31536000))
+    SECURE_HSTS_INCLUDE_SUBDOMAINS = env_bool("SECURE_HSTS_INCLUDE_SUBDOMAINS", True)
+    SECURE_HSTS_PRELOAD = env_bool("SECURE_HSTS_PRELOAD", True)

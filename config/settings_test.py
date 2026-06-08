@@ -24,3 +24,19 @@ PASSWORD_HASHERS = ["django.contrib.auth.hashers.MD5PasswordHasher"]
 
 # Keep things deterministic.
 DEBUG = False
+
+# A non-"insecure" key so the production SECRET_KEY guard in settings.py is
+# satisfied under DEBUG=False (this value is never used outside tests).
+SECRET_KEY = "test-only-secret-key-not-used-anywhere-in-production-0123456789"
+
+# Don't redirect http->https in the test client.
+SECURE_SSL_REDIRECT = False
+
+# Disable throttling for the general suite (a dedicated test re-enables it via
+# override_settings). Keeping the scope keys with None rates avoids DRF's
+# "no rate configured" error on the scoped throttles.
+REST_FRAMEWORK = {
+    **REST_FRAMEWORK,  # noqa: F405  (imported via `from .settings import *`)
+    "DEFAULT_THROTTLE_CLASSES": [],
+    "DEFAULT_THROTTLE_RATES": {k: None for k in REST_FRAMEWORK["DEFAULT_THROTTLE_RATES"]},  # noqa: F405
+}
