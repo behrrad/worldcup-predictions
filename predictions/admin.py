@@ -9,6 +9,7 @@ from .models import (
     Membership,
     Prediction,
     Team,
+    generate_export_key,
 )
 
 
@@ -71,16 +72,16 @@ class LeagueAdmin(admin.ModelAdmin):
     list_display = ("name", "competition", "owner", "invite_code",
                     "member_count", "is_active", "created_at")
     list_filter = ("competition", "is_active")
-    search_fields = ("name", "invite_code", "owner__email")
+    search_fields = ("name", "invite_code", "export_key", "owner__email")
     prepopulated_fields = {"slug": ("name",)}
-    readonly_fields = ("created_at",)
+    readonly_fields = ("created_at", "export_key")
     autocomplete_fields = ("owner",)
-    actions = ["recompute_league_scores_action"]
+    actions = ["recompute_league_scores_action", "regenerate_export_key_action"]
 
     fieldsets = (
         (consts.ADMIN_SECTION_GENERAL, {
             "fields": ("name", "slug", "competition", "owner", "description",
-                       "invite_code", "is_active", "created_at"),
+                       "invite_code", "export_key", "is_active", "created_at"),
         }),
         (consts.ADMIN_SECTION_SCORING, {
             "fields": ("lock_minutes", "points_exact", "points_correct_diff",
@@ -101,6 +102,15 @@ class LeagueAdmin(admin.ModelAdmin):
     def recompute_league_scores_action(self, request, queryset):
         total = sum(scoring.recompute_league_scores(league) for league in queryset)
         self.message_user(request, consts.MSG_ADMIN_RECOMPUTED.format(n=total))
+
+    @admin.action(description=consts.ACTION_REGENERATE_EXPORT_KEY)
+    def regenerate_export_key_action(self, request, queryset):
+        n = 0
+        for league in queryset:
+            league.export_key = generate_export_key()
+            league.save(update_fields=["export_key"])
+            n += 1
+        self.message_user(request, consts.MSG_ADMIN_EXPORT_KEYS_REGENERATED.format(n=n))
 
 
 @admin.register(Membership)

@@ -144,6 +144,44 @@ INVITE_CODE_ALPHABET = "ABCDEFGHJKMNPQRSTUVWXYZ23456789"
 
 
 # --------------------------------------------------------------------------- #
+# Results export (per-league .xlsx download, key-gated)
+# --------------------------------------------------------------------------- #
+# Each league owns a URL-safe export key — secrets.token_urlsafe(EXPORT_KEY_BYTES)
+# — that lets anyone holding it download the league's results spreadsheet.
+EXPORT_KEY_BYTES = 24          # -> a 32-character URL-safe token
+EXPORT_KEY_MAX_LENGTH = 64     # generous DB column width for the token
+
+# Spreadsheet layout (mirrors the shared league template):
+#   row 1  -> league title in column A + each member's name in their first column
+#   row 2  -> each member's running total
+#   row 3+ -> one row per match
+# Columns A-D hold the fixture (home, away, actual home, actual away); every
+# member then owns EXPORT_COLS_PER_MEMBER columns (predicted home, predicted
+# away, points) starting at EXPORT_FIRST_MEMBER_COL.
+EXPORT_TITLE_ROW = 1
+EXPORT_TOTAL_ROW = 2
+EXPORT_FIRST_MATCH_ROW = 3
+EXPORT_COL_HOME = 1            # A
+EXPORT_COL_AWAY = 2           # B
+EXPORT_COL_ACTUAL_HOME = 3    # C
+EXPORT_COL_ACTUAL_AWAY = 4    # D
+EXPORT_FIRST_MEMBER_COL = 5   # E
+EXPORT_COLS_PER_MEMBER = 3    # predicted home, predicted away, points
+
+EXPORT_SHEET_TITLE_MAX = 31   # Excel's hard limit on a worksheet tab name
+EXPORT_SHEET_TITLE_FALLBACK = "Export"
+EXPORT_CONTENT_TYPE = (
+    "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+)
+EXPORT_FILENAME_TEMPLATE = "{slug}.xlsx"
+EXPORT_FILENAME_FALLBACK = "results.xlsx"  # ASCII name for clients that ignore filename*
+# Content-Disposition that survives a non-ASCII (Persian) slug via RFC 5987.
+EXPORT_CONTENT_DISPOSITION = "attachment; filename=\"{ascii}\"; filename*=UTF-8''{encoded}"
+# Relative API path of the public download (frontend prepends the API base).
+EXPORT_PATH_TEMPLATE = "/api/export/{key}.xlsx"
+
+
+# --------------------------------------------------------------------------- #
 # Frontend paths (relative to settings.FRONTEND_URL)
 # --------------------------------------------------------------------------- #
 # A league's page in the Next.js app lives at /l/<slug> (frontend/src/app/l/[slug]).
@@ -202,6 +240,7 @@ L_AWAY_LABEL = "جایگاه میهمان (مرحلهٔ حذفی)"
 L_LEAGUE = "مسابقهٔ پیش‌بینی"
 L_OWNER = "مدیر"
 L_INVITE_CODE = "کد دعوت"
+L_EXPORT_KEY = "کلید خروجی نتایج"
 L_LOCK_MINUTES = "بستن پیش‌بینی (دقیقه قبل از شروع)"
 L_POINTS_EXACT = "امتیاز نتیجهٔ دقیق"
 L_POINTS_CORRECT_DIFF = "امتیاز برنده + اختلاف گل"
@@ -228,6 +267,7 @@ L_COMPUTED_AT = "زمان محاسبه"
 
 # Help texts
 HELP_INVITE_CODE = "این کد را با دوستانتان به اشتراک بگذارید تا به مسابقه بپیوندند."
+HELP_EXPORT_KEY = "با این کلید هرکسی می‌تواند فایل اکسل نتایج این مسابقه را دانلود کند."
 HELP_LOCK_MINUTES = "پیش‌بینی هر بازی این تعداد دقیقه پیش از شروع بسته می‌شود."
 HELP_SLUG = "اگر خالی بماند به‌صورت خودکار ساخته می‌شود."
 
@@ -257,7 +297,9 @@ ADMIN_SECTION_MULTIPLIERS = "ضریب مراحل حذفی"
 ADMIN_SECTION_GENERAL = "اطلاعات کلی"
 ACTION_RECOMPUTE_MATCH = "محاسبهٔ دوبارهٔ امتیازِ بازی‌های انتخاب‌شده"
 ACTION_RECOMPUTE_LEAGUE = "محاسبهٔ دوبارهٔ کل امتیازهای مسابقه"
+ACTION_REGENERATE_EXPORT_KEY = "ساخت دوبارهٔ کلید خروجی (کلید قبلی باطل می‌شود)"
 MSG_ADMIN_RECOMPUTED = "{n} امتیاز دوباره محاسبه شد."
+MSG_ADMIN_EXPORT_KEYS_REGENERATED = "{n} کلید خروجی دوباره ساخته شد."
 COL_SCORE = "نتیجه"
 COL_MEMBER_COUNT = "تعداد اعضا"
 COL_PREDICTION = "پیش‌بینی"
@@ -268,6 +310,7 @@ COL_PREDICTION = "پیش‌بینی"
 # --------------------------------------------------------------------------- #
 MSG_ADMIN_ONLY = "این بخش فقط برای مدیر در دسترس است."
 MSG_INVALID_RESULT = "نتیجهٔ واردشده نامعتبر است."
+MSG_EXPORT_INVALID_KEY = "کلید خروجی نامعتبر است."
 
 
 # --------------------------------------------------------------------------- #
@@ -279,12 +322,14 @@ MSG_INVALID_RESULT = "نتیجهٔ واردشده نامعتبر است."
 THROTTLE_SCOPE_USER = "user"
 THROTTLE_SCOPE_PREDICT = "predict"
 THROTTLE_SCOPE_JOIN = "league-join"
+THROTTLE_SCOPE_EXPORT = "export"   # the one anonymous endpoint (key-gated .xlsx download)
 
 # Default request rates per scope (DRF "<number>/<period>" syntax). These are
 # the defaults; each is overridable via the matching env var in settings.py.
 THROTTLE_RATE_USER = "300/min"     # authenticated requests (per user) — baseline
 THROTTLE_RATE_PREDICT = "60/min"   # prediction submits (per user)
 THROTTLE_RATE_JOIN = "20/min"      # league-join attempts (per user)
+THROTTLE_RATE_EXPORT = "30/min"    # results-export downloads (per client IP, anonymous)
 
 
 # --------------------------------------------------------------------------- #

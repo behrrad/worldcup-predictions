@@ -78,6 +78,10 @@ export interface LeagueDetail {
   is_owner: boolean;
   role: string;
   invite_code: string | null;
+  // Shared with the whole league: anyone can use this link to download the
+  // results .xlsx (upcoming predictions stay hidden inside the file).
+  export_key: string;
+  export_url: string;
   scoring: {
     points_exact: number;
     points_correct_diff: number;
