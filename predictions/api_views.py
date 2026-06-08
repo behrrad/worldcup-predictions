@@ -21,7 +21,15 @@ from rest_framework.response import Response
 
 from accounts import consts as acc_consts
 from . import consts, export, scoring
-from .models import Competition, League, Match, Membership, Prediction, Team
+from .models import (
+    Competition,
+    League,
+    Match,
+    MatchScore,
+    Membership,
+    Prediction,
+    Team,
+)
 from .throttles import EXPORT_THROTTLES, JOIN_LEAGUE_THROTTLES, PREDICT_THROTTLES
 
 User = get_user_model()
@@ -569,6 +577,87 @@ def match_detail(request, slug, match_id):
         "lock_time": match.lock_time(league.lock_minutes).isoformat(),
         "member_count": league.memberships.count(),
         "predictions": others,
+    })
+
+
+@api_view(["GET"])
+def league_all_predictions(request, slug):
+    """Every member's prediction for every match in one payload — the in-app
+    "who predicted what" board. Same reveal rules as match_detail: a match's
+    picks stay hidden until it locks (and only if the owner left reveal on);
+    before that we list *who* predicted (participation) but not their score."""
+    membership = _get_membership(request, slug)
+    league = membership.league
+    now = timezone.now()
+
+    memberships = list(Membership.objects.filter(league=league).select_related("user"))
+    users = {
+        u.id: u
+        for u in User.objects.filter(id__in=[m.user_id for m in memberships])
+    }
+    # predictions[match_id][membership_id] and scores[match_id][membership_id]
+    preds = {}
+    for p in Prediction.objects.filter(membership__league=league):
+        preds.setdefault(p.match_id, {})[p.membership_id] = p
+    scores = {}
+    for s in MatchScore.objects.filter(membership__league=league):
+        scores.setdefault(s.match_id, {})[s.membership_id] = s
+
+    matches = (
+        Match.objects.filter(competition=league.competition)
+        .select_related("home_team", "away_team")
+        .order_by("kickoff", "match_number")
+    )
+
+    out = []
+    for match in matches:
+        is_open = match.is_open_for(league.lock_minutes, now)
+        revealed = league.reveal_predictions and not is_open
+        match_preds = preds.get(match.id, {})
+        match_scores = scores.get(match.id, {}) if revealed else {}
+        rows = []
+        for m in memberships:
+            p = match_preds.get(m.id)
+            if not p:
+                continue  # only members who actually predicted
+            s = match_scores.get(m.id)
+            rows.append({
+                "name": users[m.user_id].public_name,
+                "avatar": _avatar_url(users[m.user_id], request),
+                "is_me": m.user_id == request.user.id,
+                "home": p.predicted_home if revealed else None,
+                "away": p.predicted_away if revealed else None,
+                "points": float(s.points) if s else None,
+                "tier": s.tier if s else None,
+                "tier_label": consts.TIER_LABELS.get(s.tier) if s else None,
+            })
+        # Me first, then highest scorers, then by name — stable and friendly.
+        rows.sort(key=lambda r: (not r["is_me"], -(r["points"] or 0), r["name"]))
+        out.append({
+            "id": match.id,
+            "stage": match.stage,
+            "stage_label": consts.STAGE_LABELS.get(match.stage),
+            "kickoff": match.kickoff.isoformat(),
+            "home_team": _team(match.home_team),
+            "away_team": _team(match.away_team),
+            "home_label": consts.bracket_label_fa(match.home_label) if not match.home_team_id else None,
+            "away_label": consts.bracket_label_fa(match.away_label) if not match.away_team_id else None,
+            "home_score": match.home_score,
+            "away_score": match.away_score,
+            "is_finished": match.is_finished,
+            # is_open lets the UI tell a still-open match apart from one that is
+            # locked/finished but kept private by the owner (both have revealed=False).
+            "is_open": is_open,
+            "revealed": revealed,
+            "predicted_count": len(rows),
+            "predictions": rows,
+        })
+
+    return Response({
+        "reveal_predictions": league.reveal_predictions,
+        "lock_minutes": league.lock_minutes,
+        "member_count": len(memberships),
+        "matches": out,
     })
 
 

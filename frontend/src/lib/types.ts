@@ -130,6 +130,47 @@ export interface MatchDetailResp {
   }[];
 }
 
+// One member's prediction on a match, as shown on the "Everyone's predictions"
+// board. Before a match reveals, `home`/`away`/`points` are null (we only show
+// that the person predicted, not what).
+export interface AllPredEntry {
+  name: string;
+  avatar: string | null;
+  is_me: boolean;
+  home: number | null;
+  away: number | null;
+  points: number | null;
+  tier: string | null;
+  tier_label: string | null;
+}
+
+export interface AllPredMatch {
+  id: number;
+  stage: string;
+  stage_label: string;
+  kickoff: string;
+  home_team: TeamT | null;
+  away_team: TeamT | null;
+  home_label: string | null;
+  away_label: string | null;
+  home_score: number | null;
+  away_score: number | null;
+  is_finished: boolean;
+  // Still open for predictions (not yet locked). Distinguishes a genuinely
+  // upcoming match from one that's locked/finished but kept private by the owner.
+  is_open: boolean;
+  revealed: boolean;
+  predicted_count: number;
+  predictions: AllPredEntry[];
+}
+
+export interface AllPredictionsResp {
+  reveal_predictions: boolean;
+  lock_minutes: number;
+  member_count: number;
+  matches: AllPredMatch[];
+}
+
 export interface Profile {
   id: number;
   email: string;

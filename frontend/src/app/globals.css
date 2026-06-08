@@ -339,3 +339,35 @@ a { color: inherit; text-decoration: none; }
 /* Members table cell */
 .member-cell { display: inline-flex; align-items: center; gap: 10px; }
 .member-cell .flag { font-size: 1.2rem; }
+
+/* Everyone's predictions board */
+.allpred-card .match { border-bottom: none; padding-bottom: 8px; }
+.allpred-count { margin-top: 10px; font-size: 0.84rem; }
+.pred-chips { display: flex; flex-wrap: wrap; gap: 10px; margin-top: 6px; }
+.pred-chip {
+  display: inline-flex; align-items: center; gap: 8px;
+  padding: 5px 12px 5px 6px; border-radius: 999px;
+  border: 1px solid var(--line); background: var(--surface-2);
+  font-weight: 700; font-size: 0.9rem;
+}
+.pred-chip .who { color: var(--ink); }
+.pred-chip .who .muted { font-weight: 600; }
+.pred-chip .pick {
+  font-family: var(--display); font-size: 1.05rem; font-weight: 400;
+  color: var(--ink); margin-inline-start: 2px;
+}
+.pred-chip .chip-pts {
+  background: var(--gold-tint); color: var(--gold-ink);
+  border-radius: 999px; padding: 1px 9px; font-size: 0.78rem; font-weight: 800;
+}
+/* "me" reads as a gold ring so it composes with any tier accent below. */
+.pred-chip.me { box-shadow: 0 0 0 2px var(--gold); }
+.pred-chip.tier-exact { background: var(--green-tint); border-color: var(--green); }
+.pred-chip.tier-exact .pick { color: var(--green-ink); }
+.pred-chip.tier-diff { background: var(--blue-tint); border-color: var(--blue); }
+.pred-chip.tier-diff .pick { color: var(--blue-ink); }
+.pred-chip.tier-winner { background: var(--gold-tint); border-color: var(--gold); }
+.pred-chip.tier-winner .pick { color: var(--gold-ink); }
+.pred-legend { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 14px; }
+.pred-legend .pred-chip { font-size: 0.78rem; padding: 3px 11px; }
+.pred-legend .pred-chip .pick { font-size: 0.9rem; }

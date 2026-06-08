@@ -602,3 +602,67 @@ class LeagueMembersTests(AuthedTestCase):
         league = make_league(self.comp)  # owned by someone else
         res = self.client.get(reverse("api_league_members", args=[league.slug]))
         self.assertEqual(res.status_code, 404)
+
+
+class AllPredictionsApiTests(AuthedTestCase):
+    """The 'Everyone's predictions' board aggregates picks across all matches,
+    honouring the same per-match reveal rules as the match-detail view."""
+
+    def setUp(self):
+        super().setUp()
+        self.league = make_league(self.comp, owner=self.user)
+        self.me = Membership.objects.get(league=self.league, user=self.user)
+        self.other = join(self.league)
+        self.now = timezone.now()
+
+    def _body(self):
+        return self.client.get(
+            reverse("api_league_all_predictions", args=[self.league.slug])
+        ).json()
+
+    def test_revealed_finished_match_shows_picks_and_points(self):
+        m = make_match(self.comp, kickoff=self.now - timedelta(minutes=40))
+        Prediction.objects.create(membership=self.me, match=m, predicted_home=2, predicted_away=1)
+        Prediction.objects.create(membership=self.other, match=m, predicted_home=0, predicted_away=0)
+        m.home_score, m.away_score = 2, 1
+        m.save()  # finished -> scores computed via signal
+
+        body = self._body()
+        self.assertEqual(body["member_count"], 2)
+        row = next(r for r in body["matches"] if r["id"] == m.id)
+        self.assertTrue(row["revealed"])
+        self.assertEqual(row["predicted_count"], 2)
+        me = next(p for p in row["predictions"] if p["is_me"])
+        self.assertEqual((me["home"], me["away"]), (2, 1))
+        self.assertEqual(me["points"], 10.0)  # exact, group ×1.0
+        self.assertEqual(me["tier"], consts.Tier.EXACT)
+
+    def test_open_match_hides_picks_but_counts_participation(self):
+        m = make_match(self.comp, kickoff=self.now + timedelta(hours=2))  # open
+        Prediction.objects.create(membership=self.other, match=m, predicted_home=3, predicted_away=2)
+        row = next(r for r in self._body()["matches"] if r["id"] == m.id)
+        self.assertFalse(row["revealed"])
+        self.assertTrue(row["is_open"])                     # genuinely still open
+        self.assertEqual(row["predicted_count"], 1)         # participation shown
+        self.assertIsNone(row["predictions"][0]["home"])    # pick withheld
+        self.assertIsNone(row["predictions"][0]["away"])
+
+    def test_reveal_off_hides_picks_even_after_lock(self):
+        self.league.reveal_predictions = False
+        self.league.save(update_fields=["reveal_predictions"])
+        m = make_match(self.comp, kickoff=self.now - timedelta(minutes=5))  # locked
+        Prediction.objects.create(membership=self.other, match=m, predicted_home=1, predicted_away=0)
+        body = self._body()
+        self.assertFalse(body["reveal_predictions"])
+        row = next(r for r in body["matches"] if r["id"] == m.id)
+        self.assertFalse(row["revealed"])
+        # Locked, not open -> the UI groups it as "private", not "upcoming".
+        self.assertFalse(row["is_open"])
+        self.assertIsNone(row["predictions"][0]["home"])
+
+    def test_non_member_gets_404(self):
+        other_league = make_league(self.comp)  # not joined
+        res = self.client.get(
+            reverse("api_league_all_predictions", args=[other_league.slug])
+        )
+        self.assertEqual(res.status_code, 404)
