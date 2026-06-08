@@ -7,11 +7,14 @@ there is one row per match. Columns A–D carry the fixture (home, away, actual
 home, actual away); each member then owns three columns — predicted home,
 predicted away, points.
 
-The one rule worth stating loudly: a match's row stays blank (no result, picks
-or points) until its lock time has passed, so a downloaded file can never leak an
-upcoming pick. Reveal keys strictly off the lock time — not off whether a result
-has been entered — so even an early-entered result can't expose a pick before the
-match locks.
+Two privacy rules govern what's filled in:
+  * A match's row stays blank (no result, picks or points) until its lock time has
+    passed, so a downloaded file can never leak an upcoming pick. This keys strictly
+    off the lock time — not off whether a result was entered — so even an
+    early-entered result can't expose a pick before the match locks.
+  * If the owner turned the league's reveal_predictions off, the per-match picks
+    and points stay blank even after lock (only the result and the public totals
+    show), matching what the in-app match page does.
 
 The sheet is colour-coded to match the shared league template (maroon title,
 gold member headers, amber teams, navy results, grey points) with a frozen header
@@ -95,14 +98,19 @@ def build_league_workbook(league, now=None):
         .order_by("kickoff", "match_number")
     )
 
-    # A match is "revealed" strictly once its lock time has passed. Keying off the
+    # A match is "locked" strictly once its lock time has passed. Keying off the
     # lock time alone (not match.is_finished) means that even if a result is entered
     # early — before the match would normally lock — its picks, result and points
     # all stay hidden until lock. That's the rule that makes an upcoming prediction
     # truly invisible in the downloaded file.
-    revealed_ids = {
+    locked_ids = {
         m.id for m in matches if now >= m.lock_time(league.lock_minutes)
     }
+    # The league owner can hide everyone's picks (League.reveal_predictions=False).
+    # When off, the export mirrors the in-app match page: results and the running
+    # totals still show, but each member's per-match predicted score and points
+    # stay blank. Without this the export would leak picks the owner chose to hide.
+    picks_visible = league.reveal_predictions
 
     # predictions[match_id][membership_id] -> Prediction
     predictions = {}
@@ -110,13 +118,13 @@ def build_league_workbook(league, now=None):
         predictions.setdefault(p.match_id, {})[p.membership_id] = p
 
     # scores[match_id][membership_id] -> MatchScore, and each member's total.
-    # Totals only sum scores from *revealed* matches, so the printed total always
-    # equals the sum of the points cells actually shown below it (no hidden leak).
+    # Totals always sum every locked match's points — that's the public leaderboard,
+    # shown regardless of the reveal setting (only the per-match breakdown is hidden).
     scores = {}
     totals = {m.id: Decimal("0") for m in memberships}
     for s in MatchScore.objects.filter(membership__league=league):
         scores.setdefault(s.match_id, {})[s.membership_id] = s
-        if s.match_id in revealed_ids:
+        if s.match_id in locked_ids:
             totals[s.membership_id] = totals.get(s.membership_id, Decimal("0")) + s.points
 
     wb = Workbook()
@@ -181,13 +189,18 @@ def build_league_workbook(league, now=None):
             _team_label(match.away_team, match.away_label), team_fill, team_font, start)
 
         # Not locked yet -> show only the fixture; no result, picks or points leak.
-        if match.id not in revealed_ids:
+        if match.id not in locked_ids:
             row += 1
             continue
 
         if match.is_finished:
             put(row, consts.EXPORT_COL_ACTUAL_HOME, match.home_score, result_fill, result_font)
             put(row, consts.EXPORT_COL_ACTUAL_AWAY, match.away_score, result_fill, result_font)
+
+        # Owner hid predictions -> stop at the result; leave every pick/point blank.
+        if not picks_visible:
+            row += 1
+            continue
 
         match_preds = predictions.get(match.id, {})
         match_scores = scores.get(match.id, {})

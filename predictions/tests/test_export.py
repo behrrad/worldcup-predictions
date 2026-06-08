@@ -171,6 +171,43 @@ class ExportBuilderTests(TestCase):
         self.assertIsNone(ws.cell(row=r, column=ap).value)          # not finished
         self.assertIsNone(ws.cell(row=r, column=consts.EXPORT_COL_ACTUAL_HOME).value)
 
+    def test_hidden_predictions_show_result_and_total_but_no_picks(self):
+        # Owner turned reveal_predictions off -> the result and the public total
+        # still show, but every member's per-match pick/point cell stays blank
+        # (same as the in-app match page).
+        self.league.reveal_predictions = False
+        self.league.save()
+        home = make_team(self.comp, name="آلمان")
+        away = make_team(self.comp, name="فرانسه")
+        m = make_match(self.comp, home=home, away=away,
+                       kickoff=self.now - timedelta(hours=2))
+        Prediction.objects.create(membership=self.m_owner, match=m,
+                                  predicted_home=2, predicted_away=1)  # exact -> 10
+        m.home_score, m.away_score = 2, 1
+        m.save()
+
+        ws = self._build()
+        cols = _name_to_col(ws)
+        r = _row_by_home(ws, "آلمان")
+
+        # Result is public...
+        self.assertEqual(ws.cell(row=r, column=consts.EXPORT_COL_ACTUAL_HOME).value, 2)
+        # ...and so is the running total (the leaderboard)...
+        self.assertEqual(ws.cell(row=consts.EXPORT_TOTAL_ROW, column=cols["آلیس"]).value, 10.0)
+        # ...but the per-match pick and points are hidden.
+        for off in range(consts.EXPORT_COLS_PER_MEMBER):
+            self.assertIsNone(ws.cell(row=r, column=cols["آلیس"] + off).value,
+                              "reveal_predictions=False must hide the per-match pick/points")
+
+    def test_empty_league_builds_without_error(self):
+        # No members, no matches: the builder must still produce a valid sheet.
+        Membership.objects.filter(league=self.league).delete()
+        ws = export.build_league_workbook(self.league, now=self.now).active
+        self.assertEqual(ws.cell(row=consts.EXPORT_TITLE_ROW,
+                                 column=consts.EXPORT_COL_HOME).value, self.league.name)
+        self.assertEqual(ws.freeze_panes, "E3")
+        self.assertTrue(ws.sheet_view.rightToLeft)
+
     def test_result_entered_before_lock_stays_hidden(self):
         # Anomalous but possible: a result is entered while the match is still
         # before its lock time (kickoff in the future). Reveal is keyed off the
