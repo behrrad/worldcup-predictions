@@ -33,10 +33,15 @@ def _validate(data):
     matches = data.get("matches") or []
 
     codes = [t.get("code") for t in teams]
+    # name_fa is the team's unique key (see Team.unique_team_per_competition), so
+    # the loader upserts on it — names must be unique and non-empty too.
+    names = [(t.get("name_fa") or t.get("name_en")) for t in teams]
     if len(teams) != 48:
         errors.append(f"باید ۴۸ تیم باشد، اما {len(teams)} تیم وجود دارد.")
     if not all(codes) or len(set(codes)) != len(codes):
         errors.append("کد تیم‌ها باید یکتا و غیرخالی باشد.")
+    if not all(names) or len(set(names)) != len(names):
+        errors.append("نام تیم‌ها باید یکتا و غیرخالی باشد.")
     code_set = set(codes)
 
     nums = [m.get("match_number") for m in matches]
@@ -116,8 +121,10 @@ class Command(BaseCommand):
         comp.save()
 
         if options["reset"]:
-            # Full clean slate — this also removes any predictions/scores via cascade.
+            # Full clean slate — cascade removes predictions/scores; teams too so a
+            # corrupted team row can't collide with the fresh upsert.
             comp.matches.all().delete()
+            comp.teams.all().delete()
             self.stdout.write(self.style.WARNING("داده‌های قبلی این تورنمنت پاک شد."))
 
         # Snapshot each existing match's team codes BEFORE any team change, so a
@@ -129,23 +136,26 @@ class Command(BaseCommand):
             )
         }
 
-        # UPSERT teams by code (don't delete-and-recreate): this keeps each Team's
-        # identity, so knockout matches an admin has already filled in keep pointing
-        # at the right team across reloads. Teams that left the tournament (a code no
-        # longer in the file) are pruned afterwards.
-        team_map = {}
+        # UPSERT teams by name_fa — their unique key (see Team.Meta) — so each
+        # Team keeps its identity (and any knockout FK pointing at it) across
+        # reloads. Upserting by the unique key also avoids inserting a duplicate
+        # name. Teams no longer in the file are pruned afterwards.
+        team_map = {}        # code -> Team (for assigning matches)
+        names_seen = set()
         for t in data["teams"]:
+            name_fa = t.get("name_fa") or t["name_en"]
+            names_seen.add(name_fa)
             team, _ = Team.objects.update_or_create(
-                competition=comp, code=t["code"],
+                competition=comp, name_fa=name_fa,
                 defaults={
-                    "name_fa": t.get("name_fa") or t["name_en"],
                     "name_en": t.get("name_en", ""),
+                    "code": t["code"],
                     "flag_emoji": t.get("flag") or "",
                     "group": t.get("group") or "",
                 },
             )
             team_map[t["code"]] = team
-        comp.teams.exclude(code__in=team_map).delete()
+        comp.teams.exclude(name_fa__in=names_seen).delete()
 
         # Matches are UPSERTED by match_number, so existing rows — and the
         # predictions, scores, and entered results attached to them — survive.
@@ -163,13 +173,19 @@ class Command(BaseCommand):
             if ac:
                 defaults["away_team"] = team_map.get(ac)
 
-            # If this match number now points at a *different* fixture than the one
-            # stored (e.g. migrating an old placeholder schedule to the real one),
-            # its predictions/scores/result were about other teams — drop them and
-            # the stale result so they aren't reattached to the wrong fixture.
-            # Unchanged fixtures keep everything (the whole point of the upsert).
+            # Treat the fixture as changed when the file repoints this match number
+            # at a different pairing OR a previously-assigned team has been pruned
+            # (its code is gone from the new schedule). In either case the old
+            # predictions/scores/result were about other teams — drop them so they
+            # aren't reattached to the wrong (or now-empty) fixture. Unchanged
+            # fixtures keep everything (the whole point of the upsert).
             old = old_fixture.get(mn)
-            if old is not None and ((hc and old[0] != hc) or (ac and old[1] != ac)):
+            fixture_changed = old is not None and (
+                (hc and old[0] != hc) or (ac and old[1] != ac)
+                or (old[0] and old[0] not in team_map)
+                or (old[1] and old[1] not in team_map)
+            )
+            if fixture_changed:
                 Prediction.objects.filter(match__competition=comp, match__match_number=mn).delete()
                 MatchScore.objects.filter(match__competition=comp, match__match_number=mn).delete()
                 defaults["home_score"] = None

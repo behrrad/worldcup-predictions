@@ -199,6 +199,30 @@ class SeedCommandTests(TestCase):
         self.assertFalse(m1.is_finished)
         self.assertEqual(m1.home_team.code, "MEX")                     # now the real fixture
 
+    def test_pruned_knockout_team_reverts_slot_and_clears_data(self):
+        """An admin-filled knockout team that's pruned on reload reverts the slot to
+        undecided and clears the stale result/prediction (it can't stay attached)."""
+        call_command("seed_worldcup2026", verbosity=0)
+        comp = Competition.objects.get(slug=sd.WC2026_SLUG)
+        ghost = Team.objects.create(competition=comp, name_fa="حذف‌شده", name_en="Gone",
+                                    code="ZZZ", group="")
+        ko = comp.matches.exclude(stage=consts.Stage.GROUP).order_by("match_number").first()
+        ko.home_team = ghost
+        ko.home_score, ko.away_score = 1, 0
+        ko.save()
+        user = User.objects.create_user(email="k@test.com", password="pw")
+        league = League.objects.create(name="L", competition=comp, owner=user)
+        mem = Membership.objects.create(league=league, user=user, role=consts.Role.OWNER)
+        Prediction.objects.create(membership=mem, match=ko, predicted_home=1, predicted_away=0)
+
+        call_command("seed_worldcup2026", verbosity=0)  # reload prunes the ghost
+
+        ko.refresh_from_db()
+        self.assertFalse(comp.teams.filter(code="ZZZ").exists())        # ghost pruned
+        self.assertIsNone(ko.home_team_id)                             # slot back to undecided
+        self.assertIsNone(ko.home_score)                              # stale result cleared
+        self.assertFalse(Prediction.objects.filter(match=ko).exists())
+
 
 class TestTournamentCommandTests(TestCase):
     def test_creates_compressed_timeline(self):
