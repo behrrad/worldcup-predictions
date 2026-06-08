@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { auth } from "@clerk/nextjs/server";
 
 import { fa } from "@/lib/format";
 
@@ -6,7 +7,8 @@ export const metadata = {
   title: "چطور کار می‌کند؟ · پیش‌بینی جام جهانی",
 };
 
-export default function HowItWorks() {
+export default async function HowItWorks() {
+  const { userId } = await auth();
   return (
     <>
       <div className="page-head">
@@ -118,12 +120,20 @@ export default function HowItWorks() {
           آماده‌ای؟
         </h2>
         <div className="hero-actions">
-          <Link className="btn btn-primary" href="/sign-up">
-            ثبت‌نام و شروع
-          </Link>
-          <Link className="btn btn-outline" href="/sign-in">
-            ورود
-          </Link>
+          {userId ? (
+            <Link className="btn btn-primary" href="/dashboard">
+              برو به داشبورد
+            </Link>
+          ) : (
+            <>
+              <Link className="btn btn-primary" href="/sign-up">
+                ثبت‌نام و شروع
+              </Link>
+              <Link className="btn btn-outline" href="/sign-in">
+                ورود
+              </Link>
+            </>
+          )}
         </div>
       </div>
     </>
