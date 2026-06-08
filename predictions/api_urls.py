@@ -19,4 +19,7 @@ urlpatterns = [
     path("leagues/<str:slug>/members/", api_views.league_members, name="api_league_members"),
     path("leagues/<str:slug>/predictions/", api_views.submit_predictions, name="api_submit_predictions"),
     path("leagues/<str:slug>/leaderboard/", api_views.league_leaderboard, name="api_leaderboard"),
+    # In-app admin: manual result entry (gated to admins inside the views).
+    path("admin/matches/", api_views.admin_matches, name="api_admin_matches"),
+    path("admin/matches/<int:match_id>/result/", api_views.admin_set_result, name="api_admin_set_result"),
 ]

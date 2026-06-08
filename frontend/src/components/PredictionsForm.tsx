@@ -13,7 +13,7 @@ type Filter = "open" | "group" | "knockout" | "all";
 
 const FILTERS: { key: Filter; label: string }[] = [
   { key: "open", label: "باز برای پیش‌بینی" },
-  { key: "group", label: "مرحله گروهی" },
+  { key: "group", label: "مرحلهٔ گروهی" },
   { key: "knockout", label: "مراحل حذفی" },
   { key: "all", label: "همه" },
 ];
@@ -139,7 +139,7 @@ export default function PredictionsForm({
         <div className="card">
           <div className="empty">
             {filter === "open"
-              ? "فعلاً بازی‌ای برای پیش‌بینی باز نیست. برای دیدن همهٔ بازی‌ها از فیلتر «همه» استفاده کنید."
+              ? "فعلاً بازی‌ای برای پیش‌بینی باز نیست. برای دیدن همهٔ بازی‌ها از فیلتر «همه» استفاده کن."
               : "بازی‌ای در این بخش نیست."}
           </div>
         </div>
@@ -214,12 +214,12 @@ export default function PredictionsForm({
                         {hasPred(m) ? (
                           <span className="badge-predicted">✓ پیش‌بینی ثبت شده</span>
                         ) : (
-                          <span className="muted">هنوز پیش‌بینی نکرده‌اید</span>
+                          <span className="muted">هنوز پیش‌بینی نکرده‌ای</span>
                         )}
                       </span>
                       <span className="pred-action-right">
                         {state === "saved" && <span className="save-ok">✓ ذخیره شد</span>}
-                        {state === "error" && <span className="save-err">خطا</span>}
+                        {state === "error" && <span className="save-err">ذخیره نشد</span>}
                         <button
                           type="button"
                           className="btn btn-pitch btn-sm"

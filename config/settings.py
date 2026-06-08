@@ -140,6 +140,14 @@ DATABASES = {
 # --------------------------------------------------------------------------- #
 AUTH_USER_MODEL = "accounts.User"
 
+# Accounts allowed into the in-app admin (manual result entry). Django staff and
+# superusers always qualify; this env var pins extra emails without a code change.
+ADMIN_EMAILS = [
+    e.strip().lower()
+    for e in os.environ.get("ADMIN_EMAILS", "").split(",")
+    if e.strip()
+]
+
 AUTH_PASSWORD_VALIDATORS = [
     {"NAME": "django.contrib.auth.password_validation.UserAttributeSimilarityValidator"},
     {
@@ -200,6 +208,11 @@ CORS_ALLOWED_ORIGINS = [
     if o.strip()
 ]
 CORS_ALLOW_CREDENTIALS = True
+
+# Base URL of the Next.js frontend (the user-facing UI). Used to build
+# absolute links back into the app — e.g. the admin "View on site" button for a
+# League points at its real page at FRONTEND_URL/l/<slug>.
+FRONTEND_URL = os.environ.get("FRONTEND_URL", "http://localhost:3077").rstrip("/")
 
 
 # --------------------------------------------------------------------------- #

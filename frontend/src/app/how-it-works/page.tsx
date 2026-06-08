@@ -14,7 +14,7 @@ export default async function HowItWorks() {
       <div className="page-head">
         <h1>چطور کار می‌کند؟</h1>
         <p>
-          هر چیزی که برای شروع رقابت پیش‌بینی جام جهانی با دوستانت لازم است بدانی.
+          هر چیزی که باید بدانی تا با دوستانت پیش‌بینی جام جهانی را شروع کنی.
         </p>
       </div>
 
@@ -64,7 +64,7 @@ export default async function HowItWorks() {
       <div className="card how-section">
         <h2 className="card-title">🏆 امتیازها چطور حساب می‌شوند؟</h2>
         <p className="muted">
-          برای هر بازی، بالاترین موردی که با نتیجه بخواند به تو می‌رسد:
+          برای هر بازی، بالاترین حالتی که با نتیجه جور دربیاید به تو می‌رسد:
         </p>
         <table className="rules-table">
           <tbody>

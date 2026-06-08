@@ -3,7 +3,6 @@ from datetime import timedelta
 
 from django.conf import settings
 from django.db import models
-from django.urls import reverse
 from django.utils import timezone
 from django.utils.text import slugify
 
@@ -228,7 +227,9 @@ class League(models.Model):
         super().save(*args, **kwargs)
 
     def get_absolute_url(self):
-        return reverse("league_detail", args=[self.slug])
+        # The user-facing league page is rendered by the Next.js frontend, not
+        # Django, so point at FRONTEND_URL/l/<slug> (used by admin "View on site").
+        return f"{settings.FRONTEND_URL}{consts.LEAGUE_DETAIL_PATH.format(slug=self.slug)}"
 
     # Map each stage to its configured multiplier field.
     @property

@@ -53,7 +53,7 @@ export default async function Overview({
               </div>
             ))
           ) : (
-            <div className="empty">بازی پیش‌رویی نیست.</div>
+            <div className="empty">فعلاً بازی‌ای پیش رو نیست.</div>
           )}
           <Link className="btn btn-pitch btn-block mt" href={`/l/${slug}/predictions`}>
             ثبت پیش‌بینی
@@ -75,7 +75,7 @@ export default async function Overview({
               ) : (
                 <tr>
                   <td className="empty" colSpan={3}>
-                    هنوز امتیازی ثبت نشده.
+                    هنوز امتیازی ثبت نشده است.
                   </td>
                 </tr>
               )}
