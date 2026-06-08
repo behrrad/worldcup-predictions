@@ -167,7 +167,13 @@ class Command(BaseCommand):
             mn = m["match_number"]
             kickoff = datetime.fromisoformat(m["kickoff_utc"].replace("Z", "+00:00"))
             hc, ac = m.get("home_code"), m.get("away_code")
-            defaults = {"stage": m["stage"], "kickoff": kickoff}
+            defaults = {
+                "stage": m["stage"],
+                "kickoff": kickoff,
+                "venue": m.get("venue") or "",
+                "home_label": m.get("home_label") or "",
+                "away_label": m.get("away_label") or "",
+            }
             if hc:
                 defaults["home_team"] = team_map.get(hc)
             if ac:

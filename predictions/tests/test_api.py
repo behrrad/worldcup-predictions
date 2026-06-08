@@ -8,7 +8,7 @@ from rest_framework.test import APIClient
 from rest_framework.test import APITestCase
 
 from predictions import consts
-from predictions.models import League, Membership, Prediction
+from predictions.models import League, Match, Membership, Prediction
 from predictions.throttles import JoinLeagueThrottle
 
 from .factories import join, make_competition, make_league, make_match, make_user
@@ -211,3 +211,44 @@ class ThrottleTests(AuthedTestCase):
             second = self.client.post(reverse("api_join_league"), payload, format="json")
         self.assertEqual(first.status_code, 200)
         self.assertEqual(second.status_code, 429)
+
+
+class LeagueMatchesApiTests(AuthedTestCase):
+    def setUp(self):
+        super().setUp()
+        self.league = make_league(self.comp, owner=self.user)
+
+    def test_venue_and_bracket_labels_in_payload(self):
+        # A group match with real teams + a venue.
+        group = make_match(self.comp, kickoff=timezone.now() + timedelta(days=1),
+                           venue="Estadio Azteca")
+        # A knockout match with no teams yet, carrying English bracket labels.
+        ko = Match.objects.create(
+            competition=self.comp, match_number=73, stage=consts.Stage.ROUND_OF_32,
+            home_team=None, away_team=None, venue="SoFi Stadium",
+            home_label="Group A Winner", away_label="Match 80 Winner",
+            kickoff=timezone.now() + timedelta(days=20),
+        )
+        res = self.client.get(reverse("api_league_matches", args=[self.league.slug]))
+        self.assertEqual(res.status_code, 200)
+        by_id = {m["id"]: m for m in res.json()}
+
+        g = by_id[group.id]
+        self.assertEqual(g["venue"], "Estadio Azteca")
+        self.assertIsNone(g["home_label"])  # real teams -> no placeholder
+
+        k = by_id[ko.id]
+        self.assertEqual(k["venue"], "SoFi Stadium")
+        self.assertIsNone(k["home_team"])
+        self.assertEqual(k["home_label"], "صدرنشین گروه A")
+        self.assertEqual(k["away_label"], "برندهٔ بازی ۸۰")
+
+    def test_teamless_match_without_label_falls_back_to_unknown(self):
+        ko = Match.objects.create(
+            competition=self.comp, match_number=200, stage=consts.Stage.ROUND_OF_32,
+            home_team=None, away_team=None, kickoff=timezone.now() + timedelta(days=20),
+        )
+        res = self.client.get(reverse("api_league_matches", args=[self.league.slug]))
+        k = next(m for m in res.json() if m["id"] == ko.id)
+        self.assertEqual(k["home_label"], consts.BRACKET_UNKNOWN)
+        self.assertEqual(k["away_label"], consts.BRACKET_UNKNOWN)
