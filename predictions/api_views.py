@@ -6,7 +6,7 @@ from rest_framework.response import Response
 
 from . import consts, scoring
 from .models import Competition, League, Match, Membership, Prediction
-from .throttles import JoinLeagueThrottle, PredictThrottle
+from .throttles import JOIN_LEAGUE_THROTTLES, PREDICT_THROTTLES
 
 
 # --------------------------------------------------------------------------- #
@@ -157,7 +157,7 @@ def leagues(request):
 
 
 @api_view(["POST"])
-@throttle_classes([JoinLeagueThrottle])
+@throttle_classes(JOIN_LEAGUE_THROTTLES)
 def join_league(request):
     code = (request.data.get("invite_code") or "").strip().upper()
     try:
@@ -198,7 +198,7 @@ def league_matches(request, slug):
 
 
 @api_view(["POST"])
-@throttle_classes([PredictThrottle])
+@throttle_classes(PREDICT_THROTTLES)
 def submit_predictions(request, slug):
     membership = _get_membership(request, slug)
     league = membership.league
