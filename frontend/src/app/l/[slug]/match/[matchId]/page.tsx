@@ -52,18 +52,30 @@ export default async function MatchDetail({
 
       <div className="card mt">
         <h2 className="card-title">پیش‌بینی همه</h2>
-        {data.revealed ? (
-          <table className="table">
-            <thead>
-              <tr>
-                <th>نام</th>
-                <th>پیش‌بینی</th>
-                <th>امتیاز</th>
-              </tr>
-            </thead>
-            <tbody>
-              {data.predictions.length > 0 ? (
-                data.predictions.map((p, i) => (
+        <p className="muted center">
+          {fa(data.predictions.length)} از {fa(data.member_count)} نفر پیش‌بینی
+          کرده‌اند
+        </p>
+        {data.predictions.length === 0 ? (
+          <div className="empty">هنوز کسی برای این بازی پیش‌بینی ثبت نکرده.</div>
+        ) : (
+          <>
+            {!data.revealed && (
+              <p className="muted center">
+                نتیجهٔ پیش‌بینی‌ها پس از بسته‌شدن (
+                {fmtDateTime(data.lock_time)}) نمایش داده می‌شود.
+              </p>
+            )}
+            <table className="table">
+              <thead>
+                <tr>
+                  <th>نام</th>
+                  <th>پیش‌بینی</th>
+                  {data.revealed && <th>امتیاز</th>}
+                </tr>
+              </thead>
+              <tbody>
+                {data.predictions.map((p, i) => (
                   <tr
                     key={i}
                     style={p.is_me ? { background: "#fffbeb" } : undefined}
@@ -73,27 +85,24 @@ export default async function MatchDetail({
                       {p.is_me && <span className="muted"> (تو)</span>}
                     </td>
                     <td>
-                      {fa(p.home)} : {fa(p.away)}
+                      {data.revealed ? (
+                        `${fa(p.home!)} : ${fa(p.away!)}`
+                      ) : (
+                        <span className="muted" title="پس از بسته‌شدن نمایش داده می‌شود">
+                          🔒
+                        </span>
+                      )}
                     </td>
-                    <td className="pts">
-                      {p.points !== null ? fa(p.points) : "—"}
-                    </td>
+                    {data.revealed && (
+                      <td className="pts">
+                        {p.points !== null ? fa(p.points) : "—"}
+                      </td>
+                    )}
                   </tr>
-                ))
-              ) : (
-                <tr>
-                  <td colSpan={3} className="empty">
-                    کسی برای این بازی پیش‌بینی ثبت نکرده.
-                  </td>
-                </tr>
-              )}
-            </tbody>
-          </table>
-        ) : (
-          <div className="empty">
-            پیش‌بینی دیگران پس از بسته‌شدن پیش‌بینی‌ها (
-            {fmtDateTime(data.lock_time)}) نمایش داده می‌شود.
-          </div>
+                ))}
+              </tbody>
+            </table>
+          </>
         )}
       </div>
     </>
