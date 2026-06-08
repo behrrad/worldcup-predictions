@@ -122,6 +122,18 @@ class SeedCommandTests(TestCase):
         self.assertEqual(ko.home_team_id, home.id)
         self.assertEqual(ko.away_team_id, away.id)
 
+    def test_rejects_invalid_knockout_team_code(self):
+        """A non-null team code on any match (incl. knockout) must be a real team."""
+        from predictions.management.commands.seed_worldcup2026 import DATA_PATH
+        data = json.loads(DATA_PATH.read_text(encoding="utf-8"))
+        ko = next(m for m in data["matches"] if m["stage"] != "GROUP")
+        ko["home_code"] = "XXX"  # typo: not a real team code
+        with tempfile.NamedTemporaryFile("w", suffix=".json", delete=False) as f:
+            json.dump(data, f)
+            bad_path = f.name
+        with self.assertRaises(CommandError):
+            call_command("seed_worldcup2026", "--file", bad_path, verbosity=0)
+
     def test_rejects_wrong_match_number_set(self):
         """104 matches whose numbers aren't exactly 1..104 are rejected (no stale rows)."""
         from predictions.management.commands.seed_worldcup2026 import DATA_PATH

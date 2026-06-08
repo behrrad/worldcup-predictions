@@ -59,6 +59,11 @@ def _validate(data):
             datetime.fromisoformat((m.get("kickoff_utc") or "").replace("Z", "+00:00"))
         except (ValueError, AttributeError):
             errors.append(f"بازی {n}: زمان شروع نامعتبر است.")
+        # Any team code the file names (group or knockout) must be a real team.
+        for code in (m.get("home_code"), m.get("away_code")):
+            if code is not None and code not in code_set:
+                errors.append(f"بازی {n}: کد تیم نامعتبر «{code}».")
+        # Group matches must name both teams (knockout slots may be undecided).
         if m.get("stage") == "GROUP":
             if m.get("home_code") not in code_set or m.get("away_code") not in code_set:
                 errors.append(f"بازی گروهی {n}: تیم میزبان/میهمان نامعتبر است.")
