@@ -315,3 +315,30 @@ def bracket_label_fa(label: str) -> str:
         return BRACKET_MATCH_LOSER.format(n=to_fa_digits(m.group(1)))
     return label
 
+
+# --------------------------------------------------------------------------- #
+# Results sync (football-data.org) — used by the sync_results command
+# --------------------------------------------------------------------------- #
+FOOTBALL_DATA_BASE_URL = "https://api.football-data.org/v4"
+FOOTBALL_DATA_WC_CODE = "WC"             # football-data's FIFA World Cup code
+FOOTBALL_DATA_TIMEOUT = 15               # seconds
+FOOTBALL_DATA_FINISHED = "FINISHED"      # the API match status we act on
+FOOTBALL_DATA_USER_AGENT = "worldcup-predictions/1.0"  # default urllib UA is blocked
+FOOTBALL_DATA_TOKEN_HEADER = "X-Auth-Token"
+FOOTBALL_DATA_TOKEN_ENV = "FOOTBALL_DATA_API_TOKEN"
+
+MSG_SYNC_NO_TOKEN = (
+    "توکن دسترسی football-data.org تنظیم نشده است "
+    "(متغیر محیطی FOOTBALL_DATA_API_TOKEN یا گزینهٔ --token)."
+)
+MSG_SYNC_HTTP_ERROR = "خطا در دریافت نتایج از football-data.org: {error}"
+MSG_SYNC_BAD_JSON = "پاسخ نامعتبر (غیر-JSON) از football-data.org دریافت شد."
+MSG_SYNC_NO_COMPETITION = "تورنمنت «{slug}» پیدا نشد؛ ابتدا seed_worldcup2026 را اجرا کنید."
+MSG_SYNC_DRY_RUN = "حالت آزمایشی فعال است؛ هیچ تغییری ذخیره نشد."
+MSG_SYNC_UPDATED = "به‌روزرسانی بازی {n}: {home} {hs}–{as_} {away}"
+MSG_SYNC_UNMATCHED = "بدون تطبیق در برنامهٔ محلی: {home} – {away} ({date})"
+MSG_SYNC_DONE = (
+    "همگام‌سازی نتایج انجام شد: {updated} به‌روزرسانی، {unchanged} بدون تغییر، "
+    "{unmatched} بدون تطبیق (از {total} بازی پایان‌یافتهٔ دریافتی)."
+)
+
