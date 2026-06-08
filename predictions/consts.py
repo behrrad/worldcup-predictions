@@ -326,6 +326,10 @@ FOOTBALL_DATA_FINISHED = "FINISHED"      # the API match status we act on
 FOOTBALL_DATA_USER_AGENT = "worldcup-predictions/1.0"  # default urllib UA is blocked
 FOOTBALL_DATA_TOKEN_HEADER = "X-Auth-Token"
 FOOTBALL_DATA_TOKEN_ENV = "FOOTBALL_DATA_API_TOKEN"
+# A source result only updates a local match if its kickoff is within this many
+# hours of the API's date — guards against same-team results from another
+# season/source being written onto the 2026 schedule.
+FOOTBALL_DATA_MATCH_WINDOW_HOURS = 48
 
 MSG_SYNC_NO_TOKEN = (
     "توکن دسترسی football-data.org تنظیم نشده است "

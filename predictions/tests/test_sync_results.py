@@ -1,4 +1,4 @@
-from datetime import timedelta
+from datetime import datetime, timedelta, timezone as utc_tz
 from unittest import mock
 
 from django.core.management import call_command
@@ -29,9 +29,11 @@ class SyncResultsTests(TestCase):
         self.comp = make_competition()
         self.home = make_team(self.comp, name="مکزیک", code="MEX", name_en="Mexico")
         self.away = make_team(self.comp, name="آفریقای جنوبی", code="RSA", name_en="South Africa")
+        # Fixed kickoff matching the api_match default date, so results fall inside
+        # the sync's date-match window.
         self.match = make_match(
             self.comp, home=self.home, away=self.away, match_number=1,
-            kickoff=timezone.now() - timedelta(hours=3),
+            kickoff=datetime(2026, 6, 11, 19, 0, tzinfo=utc_tz.utc),
         )
         # A member who predicted the exact score, so recompute should award points.
         self.user = make_user()
@@ -84,6 +86,12 @@ class SyncResultsTests(TestCase):
         self._run({"matches": [api_match("BRA", "ARG", 4, 0)]})  # not in local schedule
         self.match.refresh_from_db()
         self.assertIsNone(self.match.home_score)  # nothing applied, no crash
+
+    def test_out_of_window_result_is_not_applied(self):
+        # Same teams, but a date years away (another season/source) — must not apply.
+        self._run({"matches": [api_match("MEX", "RSA", 5, 0, utc="2030-01-01T00:00:00Z")]})
+        self.match.refresh_from_db()
+        self.assertIsNone(self.match.home_score)
 
     def test_inplay_and_unscored_results_are_ignored(self):
         self._run({"matches": [

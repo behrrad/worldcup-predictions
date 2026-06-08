@@ -88,12 +88,18 @@ def _parse_dt(value):
         return None
 
 
-def _pick(candidates, utc_date):
-    """From matches sharing a team pairing, pick the one closest to utc_date."""
+def _pick(candidates, utc_date, window_seconds):
+    """From matches sharing a team pairing, pick the one closest to utc_date —
+    but only if its kickoff is within window_seconds of it. Returns None when the
+    date is unparseable or no candidate falls in the window (e.g. a same-team
+    result from another season), so the caller treats it as unmatched."""
     when = _parse_dt(utc_date)
-    if len(candidates) == 1 or when is None:
-        return candidates[0]
-    return min(candidates, key=lambda m: abs((m.kickoff - when).total_seconds()))
+    if when is None:
+        return None
+    best = min(candidates, key=lambda m: abs((m.kickoff - when).total_seconds()))
+    if abs((best.kickoff - when).total_seconds()) > window_seconds:
+        return None
+    return best
 
 
 class Command(BaseCommand):
@@ -144,6 +150,7 @@ class Command(BaseCommand):
                 by_name.setdefault(key, []).append(m)
 
         dry_run = options["dry_run"]
+        window = consts.FOOTBALL_DATA_MATCH_WINDOW_HOURS * 3600
         updated = unchanged = unmatched = 0
 
         with transaction.atomic():
@@ -152,7 +159,10 @@ class Command(BaseCommand):
                     by_code.get((r["home_code"], r["away_code"]))
                     or by_name.get((r["home_name"], r["away_name"]))
                 )
-                if not candidates:
+                match = _pick(candidates, r["utc_date"], window) if candidates else None
+                if match is None:
+                    # No local pairing, or the only match is too far from the source
+                    # date (likely a different season) — never apply it.
                     unmatched += 1
                     self.stdout.write(self.style.WARNING(consts.MSG_SYNC_UNMATCHED.format(
                         home=r["home_code"] or r["home_name"],
@@ -161,7 +171,6 @@ class Command(BaseCommand):
                     )))
                     continue
 
-                match = _pick(candidates, r["utc_date"])
                 if (match.home_score == r["home_score"]
                         and match.away_score == r["away_score"]):
                     unchanged += 1
