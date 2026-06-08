@@ -185,6 +185,7 @@ auth** — that earlier approach was removed. Django's own login is only for the
 .venv/bin/python manage.py runserver 127.0.0.1:8001
 .venv/bin/python manage.py seed_worldcup2026 [--reset] [--file <path>]   # real 2026 schedule
 .venv/bin/python manage.py compute_scores [--competition <slug>]
+.venv/bin/python manage.py sync_results [--dry-run]   # pull finished scores from football-data.org
 .venv/bin/python manage.py test --settings=config.settings_test
 
 # Frontend
