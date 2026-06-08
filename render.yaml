@@ -1,0 +1,41 @@
+# Render Blueprint for the Django API (free web service).
+# The Next.js frontend is deployed separately on Vercel.
+# The database is Supabase Postgres (set DATABASE_URL below).
+services:
+  - type: web
+    name: worldcup-api
+    runtime: python
+    plan: free
+    region: oregon
+    buildCommand: "./build.sh"
+    startCommand: "gunicorn config.wsgi:application"
+    healthCheckPath: /admin/login/
+    envVars:
+      - key: PYTHON_VERSION
+        value: "3.13.4"
+      - key: SECRET_KEY
+        generateValue: true
+      - key: DEBUG
+        value: "False"
+      - key: TIME_ZONE
+        value: "Asia/Tehran"
+      # Render auto-adds RENDER_EXTERNAL_HOSTNAME to ALLOWED_HOSTS in settings.py.
+      # ALLOWED_HOSTS here is only needed for any extra/custom domains.
+      - key: ALLOWED_HOSTS
+        sync: false
+      # Supabase session-pooler connection string (IPv4), e.g.
+      #   postgresql://postgres.<ref>:<pwd>@aws-0-<region>.pooler.supabase.com:5432/postgres
+      - key: DATABASE_URL
+        sync: false
+      # Comma-separated Vercel origin(s), e.g. https://worldcup.vercel.app
+      - key: CORS_ALLOWED_ORIGINS
+        sync: false
+      - key: CSRF_TRUSTED_ORIGINS
+        sync: false
+      # Clerk
+      - key: CLERK_PUBLISHABLE_KEY
+        sync: false
+      - key: CLERK_SECRET_KEY
+        sync: false
+      - key: CLERK_FRONTEND_API_URL
+        sync: false
