@@ -120,6 +120,7 @@ a { color: inherit; text-decoration: none; }
 
 /* Header */
 .site-header {
+  background: var(--surface); /* fallback for browsers without color-mix() */
   background: color-mix(in srgb, var(--surface) 86%, transparent);
   border-bottom: 1px solid var(--line);
   position: sticky; top: 0; z-index: 50;

@@ -21,6 +21,17 @@ export default function ThemeToggle() {
 
   useEffect(() => {
     setTheme(effectiveTheme());
+    const mq = window.matchMedia?.("(prefers-color-scheme: dark)");
+    if (!mq) return;
+    const onChange = () => {
+      // Keep the icon in sync with the OS theme — but only while the user is
+      // still following the device (no explicit override set on <html>).
+      if (!document.documentElement.getAttribute("data-theme")) {
+        setTheme(mq.matches ? "dark" : "light");
+      }
+    };
+    mq.addEventListener("change", onChange);
+    return () => mq.removeEventListener("change", onChange);
   }, []);
 
   function toggle() {
@@ -36,16 +47,23 @@ export default function ThemeToggle() {
     setTheme(next);
   }
 
+  const ready = theme !== null;
   const isDark = theme === "dark";
 
+  // Until mounted, the effective theme is unknown, so don't expose a
+  // (possibly wrong) pressed state — keep the button out of the a11y tree
+  // and disabled, then enable it once the real theme is known.
   return (
     <button
       type="button"
       className="icon-btn"
       onClick={toggle}
-      aria-pressed={isDark}
-      aria-label={isDark ? "حالت روشن" : "حالت تیره"}
-      title={isDark ? "حالت روشن" : "حالت تیره"}
+      disabled={!ready}
+      tabIndex={ready ? undefined : -1}
+      aria-hidden={ready ? undefined : true}
+      aria-pressed={ready ? isDark : undefined}
+      aria-label={ready ? (isDark ? "حالت روشن" : "حالت تیره") : "تغییر تم"}
+      title={ready ? (isDark ? "حالت روشن" : "حالت تیره") : undefined}
     >
       {/* Render the icon for the theme you'd switch TO. Until mounted, show sun. */}
       {isDark ? (
