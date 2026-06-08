@@ -197,6 +197,7 @@ REST_FRAMEWORK = {
         consts.THROTTLE_SCOPE_USER: os.environ.get("THROTTLE_RATE_USER", consts.THROTTLE_RATE_USER),
         consts.THROTTLE_SCOPE_PREDICT: os.environ.get("THROTTLE_RATE_PREDICT", consts.THROTTLE_RATE_PREDICT),
         consts.THROTTLE_SCOPE_JOIN: os.environ.get("THROTTLE_RATE_JOIN", consts.THROTTLE_RATE_JOIN),
+        consts.THROTTLE_SCOPE_EXPORT: os.environ.get("THROTTLE_RATE_EXPORT", consts.THROTTLE_RATE_EXPORT),
     },
 }
 
