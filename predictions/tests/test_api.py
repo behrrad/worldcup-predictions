@@ -1,5 +1,7 @@
 from datetime import timedelta
+from unittest import mock
 
+from django.core.cache import cache
 from django.urls import reverse
 from django.utils import timezone
 from rest_framework.test import APIClient
@@ -7,6 +9,7 @@ from rest_framework.test import APITestCase
 
 from predictions import consts
 from predictions.models import League, Membership, Prediction
+from predictions.throttles import JoinLeagueThrottle
 
 from .factories import join, make_competition, make_league, make_match, make_user
 
@@ -190,3 +193,21 @@ class MatchDetailRevealTests(AuthedTestCase):
         res = self.client.get(reverse("api_match_detail", args=[self.league.slug, m.id]))
         self.assertTrue(res.json()["revealed"])
         self.assertEqual(len(res.json()["predictions"]), 1)
+
+
+class ThrottleTests(AuthedTestCase):
+    def setUp(self):
+        super().setUp()
+        cache.clear()  # throttle history lives in the cache; isolate this test
+
+    def test_join_league_is_throttled(self):
+        # DRF binds SimpleRateThrottle.THROTTLE_RATES at import time, so
+        # override_settings can't reach it — patch the rate dict directly.
+        league = make_league(self.comp)  # owned by someone else; self.user joins
+        payload = {"invite_code": league.invite_code}
+        with mock.patch.dict(JoinLeagueThrottle.THROTTLE_RATES,
+                             {consts.THROTTLE_SCOPE_JOIN: "1/min"}):
+            first = self.client.post(reverse("api_join_league"), payload, format="json")
+            second = self.client.post(reverse("api_join_league"), payload, format="json")
+        self.assertEqual(first.status_code, 200)
+        self.assertEqual(second.status_code, 429)

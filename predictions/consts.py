@@ -251,3 +251,20 @@ COL_SCORE = "نتیجه"
 COL_MEMBER_COUNT = "تعداد اعضا"
 COL_PREDICTION = "پیش‌بینی"
 
+
+# --------------------------------------------------------------------------- #
+# Rate limiting (DRF throttling)
+# --------------------------------------------------------------------------- #
+# Scope names referenced by the throttle classes in predictions/throttles.py
+# and by DEFAULT_THROTTLE_RATES in config/settings.py. (No anon scope: every
+# endpoint requires auth, so anonymous requests never reach throttling.)
+THROTTLE_SCOPE_USER = "user"
+THROTTLE_SCOPE_PREDICT = "predict"
+THROTTLE_SCOPE_JOIN = "league-join"
+
+# Default request rates per scope (DRF "<number>/<period>" syntax). These are
+# the defaults; each is overridable via the matching env var in settings.py.
+THROTTLE_RATE_USER = "300/min"     # authenticated requests (per user) — baseline
+THROTTLE_RATE_PREDICT = "60/min"   # prediction submits (per user)
+THROTTLE_RATE_JOIN = "20/min"      # league-join attempts (per user)
+

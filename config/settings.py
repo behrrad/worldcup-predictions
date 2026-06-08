@@ -5,8 +5,11 @@ Django settings for the World Cup prediction league (پیش‌بینی جام ج
 from pathlib import Path
 
 import dj_database_url
+from django.core.exceptions import ImproperlyConfigured
 from dotenv import load_dotenv
 import os
+
+from predictions import consts
 
 BASE_DIR = Path(__file__).resolve().parent.parent
 
@@ -16,6 +19,15 @@ load_dotenv(BASE_DIR / ".env")
 
 def env_bool(name: str, default: bool = False) -> bool:
     return os.environ.get(name, str(default)).lower() in {"1", "true", "yes", "on"}
+
+
+# Known dev/placeholder SECRET_KEY values that must never sign sessions in
+# production: Django's auto-generated dev default and the .env.example placeholder.
+INSECURE_SECRET_KEYS = {"change-me-to-a-long-random-string"}
+
+
+def is_insecure_secret_key(key: str) -> bool:
+    return key.startswith("django-insecure-") or key in INSECURE_SECRET_KEYS
 
 
 # --------------------------------------------------------------------------- #
@@ -165,6 +177,19 @@ REST_FRAMEWORK = {
         "rest_framework.permissions.IsAuthenticated",
     ],
     "UNAUTHENTICATED_USER": None,
+    # Every endpoint requires authentication, so DRF rejects anonymous requests at
+    # the permission check (before throttling) — an AnonRateThrottle here would
+    # never fire. We throttle per authenticated user instead, with tighter scoped
+    # limits on abuse-prone writes (predictions/throttles.py). Raw unauthenticated
+    # floods are a host/edge concern (Render/CDN rate limiting).
+    "DEFAULT_THROTTLE_CLASSES": [
+        "rest_framework.throttling.UserRateThrottle",
+    ],
+    "DEFAULT_THROTTLE_RATES": {
+        consts.THROTTLE_SCOPE_USER: os.environ.get("THROTTLE_RATE_USER", consts.THROTTLE_RATE_USER),
+        consts.THROTTLE_SCOPE_PREDICT: os.environ.get("THROTTLE_RATE_PREDICT", consts.THROTTLE_RATE_PREDICT),
+        consts.THROTTLE_SCOPE_JOIN: os.environ.get("THROTTLE_RATE_JOIN", consts.THROTTLE_RATE_JOIN),
+    },
 }
 
 CORS_ALLOWED_ORIGINS = [
@@ -207,7 +232,22 @@ DEFAULT_AUTO_FIELD = "django.db.models.BigAutoField"
 
 # Production-leaning security toggles (enabled automatically when DEBUG is off).
 if not DEBUG:
+    # Refuse to boot in production with a known/placeholder SECRET_KEY — a strong
+    # key MUST come from the environment / secret manager.
+    if is_insecure_secret_key(SECRET_KEY):
+        raise ImproperlyConfigured(
+            "Set a strong, unique SECRET_KEY environment variable in production "
+            "(a known development/placeholder value is still in use)."
+        )
+
     SECURE_SSL_REDIRECT = env_bool("SECURE_SSL_REDIRECT", True)
     SESSION_COOKIE_SECURE = True
     CSRF_COOKIE_SECURE = True
     SECURE_PROXY_SSL_HEADER = ("HTTP_X_FORWARDED_PROTO", "https")
+    SECURE_CONTENT_TYPE_NOSNIFF = True
+
+    # HTTP Strict Transport Security. Defaults to 1 year; set SECURE_HSTS_SECONDS=0
+    # to disable while validating TLS on a new domain.
+    SECURE_HSTS_SECONDS = int(os.environ.get("SECURE_HSTS_SECONDS", 31536000))
+    SECURE_HSTS_INCLUDE_SUBDOMAINS = env_bool("SECURE_HSTS_INCLUDE_SUBDOMAINS", True)
+    SECURE_HSTS_PRELOAD = env_bool("SECURE_HSTS_PRELOAD", True)
