@@ -47,3 +47,44 @@ class ExportKeyBackfillTests(TransactionTestCase):
     def tearDown(self):
         # Leave the schema at the latest migration for the rest of the suite.
         MigrationExecutor(connection).migrate(self.migrate_to)
+
+
+class ReslugLeaguesTests(TransactionTestCase):
+    """0006 rewrites Persian league slugs to readable ASCII (and leaves ASCII
+    slugs — e.g. ones customised by hand — exactly as they are)."""
+
+    migrate_from = [("predictions", "0005_league_reveal_predictions")]
+    migrate_to = [("predictions", "0006_reslug_leagues_to_latin")]
+    head = [("predictions", "0006_reslug_leagues_to_latin")]
+
+    def test_persian_slugs_rewritten_ascii_slugs_kept(self):
+        from accounts.models import User
+
+        executor = MigrationExecutor(connection)
+        executor.migrate(self.migrate_from)            # before the re-slug runs
+        old_apps = executor.loader.project_state(self.migrate_from).apps
+
+        Competition = old_apps.get_model("predictions", "Competition")
+        League = old_apps.get_model("predictions", "League")
+
+        owner = User.objects.create_user(email="owner@test.com", password="pw")
+        comp = Competition.objects.create(name="جام", slug="cup")
+        # A Persian slug (what save() used to produce) — must be transliterated.
+        League.objects.create(name="لیگ دوستان", slug="لیگ-دوستان", competition=comp,
+                              owner_id=owner.id, invite_code="INVITE01")
+        # An ASCII slug (English name or hand-edited) — must be left untouched.
+        League.objects.create(name="My League", slug="custom-keep", competition=comp,
+                              owner_id=owner.id, invite_code="INVITE02")
+
+        executor = MigrationExecutor(connection)
+        executor.loader.build_graph()
+        executor.migrate(self.migrate_to)
+        new_apps = executor.loader.project_state(self.migrate_to).apps
+
+        League = new_apps.get_model("predictions", "League")
+        self.assertEqual(League.objects.get(invite_code="INVITE01").slug, "lig-dustan")
+        self.assertEqual(League.objects.get(invite_code="INVITE02").slug, "custom-keep")
+
+    def tearDown(self):
+        # Leave the schema at head for the rest of the suite.
+        MigrationExecutor(connection).migrate(self.head)

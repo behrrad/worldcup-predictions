@@ -6,7 +6,7 @@ from django.test import TestCase
 from django.utils import timezone
 
 from predictions import consts
-from predictions.models import generate_invite_code
+from predictions.models import fa_to_latin_slug, generate_invite_code
 
 from .factories import make_competition, make_league, make_match
 
@@ -24,12 +24,49 @@ class InviteCodeTests(TestCase):
         self.assertNotEqual(a.invite_code, b.invite_code)
 
 
+class TransliterationTests(TestCase):
+    """fa_to_latin_slug turns Persian names into readable ASCII slugs."""
+
+    def test_known_examples(self):
+        # Lock the mapping for representative names (approximate, by design).
+        cases = {
+            "لیگ دوستان": "lig-dustan",
+            "لیگ دموی نمایش": "lig-dmui-nmaish",
+            "رفقای فوتبال": "rfghai-futbal",
+        }
+        for name, expected in cases.items():
+            self.assertEqual(fa_to_latin_slug(name), expected, name)
+
+    def test_zero_width_non_joiner_is_dropped(self):
+        # «پیش‌بینی» contains a ZWNJ between پیش and بینی; it must not survive.
+        self.assertEqual(fa_to_latin_slug("پیش‌بینی"), "pishbini")
+
+    def test_persian_digits_become_ascii(self):
+        self.assertEqual(fa_to_latin_slug("جام ۲۰۲۶"), "jam-2026")
+
+    def test_ascii_names_pass_through(self):
+        self.assertEqual(fa_to_latin_slug("Friends League"), "friends-league")
+
+    def test_result_is_always_ascii(self):
+        slug = fa_to_latin_slug("لیگ خانوادگی ⚽")
+        self.assertTrue(slug.isascii())
+        self.assertNotIn(" ", slug)
+
+    def test_unmappable_name_is_empty(self):
+        # Only emoji/punctuation -> empty; callers fall back to a default.
+        self.assertEqual(fa_to_latin_slug("⚽🏆"), "")
+
+
 class SlugTests(TestCase):
-    def test_persian_slug_generated(self):
+    def test_persian_name_gets_readable_ascii_slug(self):
         comp = make_competition(name="جام جهانی")
         league = make_league(comp, name="رفقای فوتبال")
-        self.assertTrue(league.slug)  # unicode slug allowed
-        self.assertIn("رفقای", league.slug)
+        self.assertEqual(league.slug, "rfghai-futbal")
+        self.assertTrue(league.slug.isascii())  # no percent-encoded URLs
+
+    def test_emoji_only_name_falls_back(self):
+        league = make_league(make_competition(), name="🏆⚽")
+        self.assertEqual(league.slug, consts.SLUG_FALLBACK_LEAGUE)
 
     def test_duplicate_names_get_unique_slugs(self):
         # Two leagues with the same name must not collide on the unique slug.

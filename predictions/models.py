@@ -22,6 +22,20 @@ def generate_export_key() -> str:
     return secrets.token_urlsafe(consts.EXPORT_KEY_BYTES)
 
 
+def fa_to_latin_slug(text: str) -> str:
+    """Transliterate Persian text to a readable ASCII slug.
+
+    League/competition names are Persian; slugify(..., allow_unicode=True) would
+    keep them Persian and percent-encode into gibberish in URLs. We map each
+    Persian letter to its Latin equivalent (consts.FA_TO_LATIN) first, then run
+    the ASCII slugify, so «لیگ دوستان» becomes "lig-dustan". Any character not in
+    the map (Latin letters, digits, spaces, punctuation) passes through to
+    slugify untouched, so English names keep working as before.
+    """
+    transliterated = "".join(consts.FA_TO_LATIN.get(ch, ch) for ch in text)
+    return slugify(transliterated)  # ASCII slugify: lowercases, strips, hyphenates
+
+
 # --------------------------------------------------------------------------- #
 # The real-world football event (e.g. World Cup 2026)
 # --------------------------------------------------------------------------- #
@@ -42,7 +56,7 @@ class Competition(models.Model):
 
     def save(self, *args, **kwargs):
         if not self.slug:
-            self.slug = slugify(self.name, allow_unicode=True) or "competition"
+            self.slug = fa_to_latin_slug(self.name) or consts.SLUG_FALLBACK_COMPETITION
         super().save(*args, **kwargs)
 
 
@@ -234,7 +248,7 @@ class League(models.Model):
             # Slugs are unique; two leagues sharing a name (e.g. "Friends") would
             # otherwise collide and raise IntegrityError on create. Append a
             # numeric suffix until the slug is free.
-            base = slugify(self.name, allow_unicode=True) or "league"
+            base = fa_to_latin_slug(self.name) or consts.SLUG_FALLBACK_LEAGUE
             slug = base
             n = 2
             while League.objects.filter(slug=slug).exclude(pk=self.pk).exists():
