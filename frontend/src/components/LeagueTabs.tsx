@@ -10,6 +10,7 @@ export default function LeagueTabs({ slug }: { slug: string }) {
     { href: base, label: "نمای کلی" },
     { href: `${base}/predictions`, label: "پیش‌بینی‌ها" },
     { href: `${base}/leaderboard`, label: "جدول امتیازات" },
+    { href: `${base}/members`, label: "اعضا" },
     { href: `${base}/matches`, label: "بازی‌ها و امتیاز من" },
     { href: `${base}/rules`, label: "قوانین" },
   ];

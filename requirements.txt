@@ -6,6 +6,11 @@ PyJWT[crypto]>=2.8
 djangorestframework>=3.15
 django-cors-headers>=4.4
 
+# --- Media uploads (profile avatars) ---
+Pillow>=10.4                 # ImageField validation/decoding
+django-storages[s3]>=1.14   # Supabase Storage (S3-compatible) backend in prod
+boto3>=1.34                  # S3 client used by django-storages
+
 # --- Production server / static files ---
 gunicorn>=23.0
 whitenoise>=6.7

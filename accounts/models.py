@@ -20,6 +20,20 @@ class User(AbstractUser):
         consts.LABEL_CLERK_ID, max_length=80, unique=True, null=True, blank=True,
     )
 
+    # -- Public profile ---------------------------------------------------- #
+    avatar = models.ImageField(
+        consts.LABEL_AVATAR, upload_to=consts.AVATAR_UPLOAD_DIR, blank=True, null=True,
+    )
+    bio = models.TextField(consts.LABEL_BIO, max_length=consts.BIO_MAX_LENGTH, blank=True)
+    location = models.CharField(consts.LABEL_LOCATION, max_length=consts.LOCATION_MAX_LENGTH, blank=True)
+    social_handle = models.CharField(consts.LABEL_SOCIAL, max_length=consts.SOCIAL_MAX_LENGTH, blank=True)
+    # FK lives here (accounts) by string ref to avoid importing the predictions
+    # app at module load; the migration depends on predictions' initial migration.
+    favorite_team = models.ForeignKey(
+        "predictions.Team", on_delete=models.SET_NULL, null=True, blank=True,
+        related_name="fans", verbose_name=consts.LABEL_FAVORITE_TEAM,
+    )
+
     USERNAME_FIELD = "email"
     REQUIRED_FIELDS = []  # email & password are required by default
 

@@ -22,6 +22,12 @@ export default function Header() {
               <Link className="nav-link" href="/dashboard">
                 داشبورد
               </Link>
+              <Link className="nav-link" href="/players">
+                بازیکنان
+              </Link>
+              <Link className="nav-link" href="/profile">
+                پروفایل من
+              </Link>
               <UserButton />
             </>
           ) : (
