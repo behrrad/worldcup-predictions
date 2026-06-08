@@ -163,7 +163,9 @@ INVITE_CODE_ALPHABET = "ABCDEFGHJKMNPQRSTUVWXYZ23456789"
 # for typical league names. The map is intentionally simple and position-blind so
 # the output is predictable and testable.
 FA_TO_LATIN = {
-    # Alef family
+    # Alef family. «ى» (U+0649, alef maksura) is the long-ā ending of Arabic-origin
+    # names common in Persian (موسى→musa, مصطفى→mostafa, عیسى→isa), so it maps to
+    # "a", not to a yeh — see test_known_examples.
     "ا": "a", "آ": "a", "أ": "a", "إ": "a", "ٱ": "a", "ى": "a",
     # Hamza carriers
     "ء": "", "ئ": "y", "ؤ": "v",
@@ -173,16 +175,17 @@ FA_TO_LATIN = {
     "ژ": "zh", "س": "s", "ش": "sh", "ص": "s", "ض": "z", "ط": "t",
     "ظ": "z", "ع": "a", "غ": "gh", "ف": "f", "ق": "gh",
     "ک": "k", "ك": "k", "گ": "g", "ل": "l", "م": "m", "ن": "n",
-    "و": "u", "ه": "h", "ة": "h", "ی": "i", "ي": "i",
+    "و": "u", "ه": "h", "ة": "h", "ۀ": "e", "ی": "i", "ي": "i",
     # Persian & Arabic-Indic digits
     "۰": "0", "۱": "1", "۲": "2", "۳": "3", "۴": "4",
     "۵": "5", "۶": "6", "۷": "7", "۸": "8", "۹": "9",
     "٠": "0", "١": "1", "٢": "2", "٣": "3", "٤": "4",
     "٥": "5", "٦": "6", "٧": "7", "٨": "8", "٩": "9",
-    # Joiners, tatweel and harakat (vowel marks) are dropped
+    # Joiners, tatweel, harakat (vowel marks) and combining hamza/maddah are dropped
     "‌": "", "‍": "", "ـ": "",
     "ً": "", "ٌ": "", "ٍ": "", "َ": "",
     "ُ": "", "ِ": "", "ّ": "", "ْ": "",
+    "ٓ": "", "ٔ": "", "ٕ": "",
 }
 # Used when a name transliterates to nothing (e.g. only emoji/punctuation).
 SLUG_FALLBACK_LEAGUE = "league"

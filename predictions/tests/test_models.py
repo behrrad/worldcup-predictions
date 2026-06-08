@@ -33,6 +33,11 @@ class TransliterationTests(TestCase):
             "لیگ دوستان": "lig-dustan",
             "لیگ دموی نمایش": "lig-dmui-nmaish",
             "رفقای فوتبال": "rfghai-futbal",
+            # «ى» (alef maksura) is the long-ā ending of these names, so -> "a".
+            "موسى": "musa",
+            "مصطفى": "mstfa",
+            # «ۀ» (heh with yeh / ezafe) -> "e".
+            "خانۀ ما": "khane-ma",
         }
         for name, expected in cases.items():
             self.assertEqual(fa_to_latin_slug(name), expected, name)

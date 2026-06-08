@@ -482,10 +482,12 @@ def export_league(request, key):
 
     response = HttpResponse(content, content_type=consts.EXPORT_CONTENT_TYPE)
     filename = consts.EXPORT_FILENAME_TEMPLATE.format(slug=league.slug)
-    # Slugs may be Persian; RFC 5987 `filename*` keeps the non-ASCII name, with a
-    # plain ASCII `filename` fallback for older clients.
+    # Slugs are normally ASCII now, so the plain `filename` can carry the real name;
+    # the RFC 5987 `filename*` still preserves any non-ASCII name, and we keep a
+    # generic ASCII fallback for the rare slug that isn't ASCII-safe.
+    ascii_name = filename if filename.isascii() else consts.EXPORT_FILENAME_FALLBACK
     response["Content-Disposition"] = consts.EXPORT_CONTENT_DISPOSITION.format(
-        ascii=consts.EXPORT_FILENAME_FALLBACK, encoded=quote(filename),
+        ascii=ascii_name, encoded=quote(filename),
     )
     return response
 

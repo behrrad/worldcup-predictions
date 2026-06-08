@@ -85,6 +85,43 @@ class ReslugLeaguesTests(TransactionTestCase):
         self.assertEqual(League.objects.get(invite_code="INVITE01").slug, "lig-dustan")
         self.assertEqual(League.objects.get(invite_code="INVITE02").slug, "custom-keep")
 
+    def test_colliding_slugs_get_suffixed_without_overwrite(self):
+        from accounts.models import User
+
+        executor = MigrationExecutor(connection)
+        executor.migrate(self.migrate_from)
+        old_apps = executor.loader.project_state(self.migrate_from).apps
+
+        Competition = old_apps.get_model("predictions", "Competition")
+        League = old_apps.get_model("predictions", "League")
+
+        owner = User.objects.create_user(email="owner@test.com", password="pw")
+        comp = Competition.objects.create(name="جام", slug="cup")
+        # An existing ASCII slug equal to what «لیگ دوستان» transliterates to — it
+        # must be preserved, and the re-slugged leagues must route around it.
+        League.objects.create(name="Keep Me", slug="lig-dustan", competition=comp,
+                              owner_id=owner.id, invite_code="INVITE00")
+        # Two Persian leagues whose names transliterate to the same base.
+        League.objects.create(name="لیگ دوستان", slug="لیگ-دوستان", competition=comp,
+                              owner_id=owner.id, invite_code="INVITE01")
+        League.objects.create(name="لیگ دوستان", slug="لیگ-دوستان-2", competition=comp,
+                              owner_id=owner.id, invite_code="INVITE02")
+
+        executor = MigrationExecutor(connection)
+        executor.loader.build_graph()
+        executor.migrate(self.migrate_to)
+        new_apps = executor.loader.project_state(self.migrate_to).apps
+
+        League = new_apps.get_model("predictions", "League")
+        slugs = {
+            ic: League.objects.get(invite_code=ic).slug
+            for ic in ("INVITE00", "INVITE01", "INVITE02")
+        }
+        self.assertEqual(slugs["INVITE00"], "lig-dustan")          # untouched
+        self.assertEqual(len(set(slugs.values())), 3)              # all unique
+        self.assertTrue(slugs["INVITE01"].startswith("lig-dustan-"))
+        self.assertTrue(slugs["INVITE02"].startswith("lig-dustan-"))
+
     def tearDown(self):
         # Leave the schema at head for the rest of the suite.
         MigrationExecutor(connection).migrate(self.head)
