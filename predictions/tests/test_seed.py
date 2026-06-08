@@ -1,11 +1,26 @@
+import json
+import tempfile
+from collections import Counter
+
 from django.core.management import call_command
+from django.core.management.base import CommandError
 from django.test import TestCase
 
+from accounts.models import User
 from predictions import consts, seed_data as sd
-from predictions.models import Competition, Match, Team
+from predictions.models import (
+    Competition,
+    League,
+    Match,
+    Membership,
+    Prediction,
+    Team,
+)
 
 
 class SeedCommandTests(TestCase):
+    """`seed_worldcup2026` loads the real, official 2026 schedule by default."""
+
     def test_seed_creates_expected_counts(self):
         call_command("seed_worldcup2026", verbosity=0)
         comp = Competition.objects.get(slug=sd.WC2026_SLUG)
@@ -14,20 +29,81 @@ class SeedCommandTests(TestCase):
         # 12 groups × 6 round-robin matches = 72 group matches
         group = Match.objects.filter(competition=comp, stage=consts.Stage.GROUP)
         self.assertEqual(group.count(), 72)
-        # knockout placeholders: 16+8+4+2+1+1 = 32
+        # knockout: 16+8+4+2+1+1 = 32
         knockout = Match.objects.filter(competition=comp).exclude(stage=consts.Stage.GROUP)
         self.assertEqual(knockout.count(), 32)
 
+    def test_group_matches_have_both_teams(self):
+        call_command("seed_worldcup2026", verbosity=0)
+        comp = Competition.objects.get(slug=sd.WC2026_SLUG)
+        group = comp.matches.filter(stage=consts.Stage.GROUP)
+        self.assertTrue(all(m.home_team_id and m.away_team_id for m in group))
+
+    def test_every_match_has_a_kickoff(self):
+        call_command("seed_worldcup2026", verbosity=0)
+        comp = Competition.objects.get(slug=sd.WC2026_SLUG)
+        self.assertTrue(all(m.kickoff is not None for m in comp.matches.all()))
+
+    def test_loads_real_opener(self):
+        """The real schedule opens with Mexico v South Africa at the Azteca."""
+        call_command("seed_worldcup2026", verbosity=0)
+        comp = Competition.objects.get(slug=sd.WC2026_SLUG)
+        opener = comp.matches.get(match_number=1)
+        self.assertEqual(opener.home_team.code, "MEX")
+        self.assertEqual(opener.away_team.code, "RSA")
+
+    def test_iran_is_seeded(self):
+        call_command("seed_worldcup2026", verbosity=0)
+        self.assertTrue(Team.objects.filter(name_fa="ایران", group="G").exists())
+
     def test_seed_is_idempotent(self):
         call_command("seed_worldcup2026", verbosity=0)
-        call_command("seed_worldcup2026", verbosity=0)  # second run is a no-op
+        call_command("seed_worldcup2026", verbosity=0)  # re-runs upsert to the same state
         comp = Competition.objects.get(slug=sd.WC2026_SLUG)
         self.assertEqual(Team.objects.filter(competition=comp).count(), 48)
         self.assertEqual(Match.objects.filter(competition=comp).count(), 104)
 
-    def test_iran_is_seeded(self):
+    def test_reload_preserves_predictions_and_results(self):
+        """A second load must NOT wipe predictions/scores/results (upsert by number)."""
         call_command("seed_worldcup2026", verbosity=0)
-        self.assertTrue(Team.objects.filter(name_fa="ایران").exists())
+        comp = Competition.objects.get(slug=sd.WC2026_SLUG)
+        user = User.objects.create_user(email="p@test.com", password="pw")
+        league = League.objects.create(name="L", competition=comp, owner=user)
+        mem = Membership.objects.create(league=league, user=user, role=consts.Role.OWNER)
+        match = comp.matches.filter(stage=consts.Stage.GROUP).order_by("match_number").first()
+        Prediction.objects.create(membership=mem, match=match,
+                                  predicted_home=2, predicted_away=1)
+        match_id = match.id
+
+        call_command("seed_worldcup2026", verbosity=0)  # reload
+
+        self.assertTrue(Prediction.objects.filter(membership=mem).exists())
+        # the same match row is reused (id preserved), so predictions stay attached
+        self.assertTrue(comp.matches.filter(id=match_id).exists())
+        self.assertEqual(comp.matches.count(), 104)
+
+    def test_reset_rebuilds_from_scratch(self):
+        call_command("seed_worldcup2026", verbosity=0)
+        call_command("seed_worldcup2026", "--reset", verbosity=0)
+        comp = Competition.objects.get(slug=sd.WC2026_SLUG)
+        self.assertEqual(comp.teams.count(), 48)
+        self.assertEqual(comp.matches.count(), 104)
+
+    def test_invalid_file_is_rejected_without_mutating(self):
+        """A bad file must raise and leave existing data untouched."""
+        call_command("seed_worldcup2026", verbosity=0)
+        before = Competition.objects.get(slug=sd.WC2026_SLUG).matches.count()
+
+        bad = {"competition": {"slug": sd.WC2026_SLUG}, "teams": [], "matches": []}
+        with tempfile.NamedTemporaryFile("w", suffix=".json", delete=False) as f:
+            json.dump(bad, f)
+            bad_path = f.name
+
+        with self.assertRaises(CommandError):
+            call_command("seed_worldcup2026", "--file", bad_path, verbosity=0)
+
+        after = Competition.objects.get(slug=sd.WC2026_SLUG).matches.count()
+        self.assertEqual(before, after)  # nothing was deleted
 
 
 class TestTournamentCommandTests(TestCase):
@@ -52,9 +128,6 @@ class TestTournamentCommandTests(TestCase):
         self.assertEqual(comp.matches.count(), len(sd.TEST_CUP_SCHEDULE))
 
     def test_rerun_preserves_predictions(self):
-        from accounts.models import User
-        from predictions.models import League, Membership, Prediction
-
         call_command("seed_test_tournament", verbosity=0)
         comp = Competition.objects.get(slug=sd.TEST_CUP_SLUG)
         user = User.objects.create_user(email="t@test.com", password="pw")
