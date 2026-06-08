@@ -130,6 +130,9 @@ def _league_dict(league, membership, request):
         "is_owner": membership.is_owner,
         "role": membership.role,
         "invite_code": league.invite_code if membership.is_owner else None,
+        # Whether other members' predictions are shown after a match locks
+        # (owner-toggleable). The frontend renders the toggle for the owner.
+        "reveal_predictions": league.reveal_predictions,
         # The export key/link is shared with the whole league — anyone can use it
         # to download the results spreadsheet (upcoming picks stay hidden inside it).
         "export_key": league.export_key,
@@ -180,6 +183,14 @@ def _get_membership(request, slug):
 def _clean(value, max_length):
     """Trim whitespace and cap length so we never overflow a DB column."""
     return (value or "").strip()[:max_length]
+
+
+def _as_bool(value) -> bool:
+    """Coerce a JSON/string flag to a real bool. JSON booleans arrive as bool
+    already; guard the common string/number forms so e.g. "false" isn't truthy."""
+    if isinstance(value, str):
+        return value.strip().lower() in ("true", "1", "yes", "on")
+    return bool(value)
 
 
 def _update_profile(user, data):
@@ -362,10 +373,18 @@ def join_league(request):
     return Response({"slug": league.slug, "name": league.name, "created": created})
 
 
-@api_view(["GET"])
+@api_view(["GET", "PATCH"])
 def league_detail(request, slug):
     membership = _get_membership(request, slug)
-    return Response(_league_dict(membership.league, membership, request))
+    league = membership.league
+    if request.method == "PATCH":
+        # Only the league owner (its "admin") may change settings.
+        if not membership.is_owner:
+            raise PermissionDenied(consts.MSG_OWNER_ONLY)
+        if "reveal_predictions" in request.data:
+            league.reveal_predictions = _as_bool(request.data.get("reveal_predictions"))
+            league.save(update_fields=["reveal_predictions"])
+    return Response(_league_dict(league, membership, request))
 
 
 @api_view(["GET"])
@@ -512,10 +531,11 @@ def match_detail(request, slug, match_id):
     match = get_object_or_404(Match, id=match_id, competition=league.competition)
     now = timezone.now()
 
-    # A match's picks are revealed once it locks (default: 30m before kickoff).
-    # Before that we still list *who* has predicted — names only, scores hidden —
-    # so members can see participation without copying anyone's prediction.
-    revealed = not match.is_open_for(league.lock_minutes, now)
+    # A match's picks are revealed once it locks (default: 30m before kickoff) —
+    # but only if the league owner left reveal turned on. Before lock (or when the
+    # owner disabled reveal) we still list *who* has predicted — names only,
+    # scores hidden — so members see participation without copying a prediction.
+    revealed = league.reveal_predictions and not match.is_open_for(league.lock_minutes, now)
     scores = {s.membership_id: s for s in match.scores.all()} if revealed else {}
     qs = (
         Prediction.objects.filter(match=match, membership__league=league)
@@ -541,6 +561,9 @@ def match_detail(request, slug, match_id):
     return Response({
         "match": _match_dict(match, league, now, my_pred),
         "revealed": revealed,
+        # Surfaced so the UI can explain *why* picks are hidden: not locked yet
+        # vs. the owner turned reveal off for this league.
+        "reveal_predictions": league.reveal_predictions,
         "lock_time": match.lock_time(league.lock_minutes).isoformat(),
         "member_count": league.memberships.count(),
         "predictions": others,

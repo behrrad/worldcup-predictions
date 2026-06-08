@@ -80,6 +80,11 @@ DEFAULT_STAGE_MULTIPLIERS = {
 # How many minutes before kickoff predictions lock.
 DEFAULT_LOCK_MINUTES = 30
 
+# Whether other members' predictions are revealed once a match locks. The league
+# owner can turn this off (per league) to keep everyone's picks private — names
+# and participation still show, but the actual predicted scores never appear.
+DEFAULT_REVEAL_PREDICTIONS = True
+
 
 # --------------------------------------------------------------------------- #
 # Scoring tiers (used to label *why* a prediction earned its points)
@@ -242,6 +247,7 @@ L_OWNER = "مدیر"
 L_INVITE_CODE = "کد دعوت"
 L_EXPORT_KEY = "کلید خروجی نتایج"
 L_LOCK_MINUTES = "بستن پیش‌بینی (دقیقه قبل از شروع)"
+L_REVEAL_PREDICTIONS = "نمایش پیش‌بینی دیگران پس از بسته‌شدن"
 L_POINTS_EXACT = "امتیاز نتیجهٔ دقیق"
 L_POINTS_CORRECT_DIFF = "امتیاز برنده + اختلاف گل"
 L_POINTS_CORRECT_WINNER = "امتیاز برندهٔ درست"
@@ -269,6 +275,10 @@ L_COMPUTED_AT = "زمان محاسبه"
 HELP_INVITE_CODE = "این کد را با دوستانتان به اشتراک بگذارید تا به مسابقه بپیوندند."
 HELP_EXPORT_KEY = "با این کلید هرکسی می‌تواند فایل اکسل نتایج این مسابقه را دانلود کند."
 HELP_LOCK_MINUTES = "پیش‌بینی هر بازی این تعداد دقیقه پیش از شروع بسته می‌شود."
+HELP_REVEAL_PREDICTIONS = (
+    "اگر روشن باشد، پس از بسته‌شدن هر بازی پیش‌بینی دیگران برای همهٔ اعضا "
+    "نمایش داده می‌شود. اگر خاموش باشد، پیش‌بینی‌ها همیشه خصوصی می‌مانند."
+)
 HELP_SLUG = "اگر خالی بماند به‌صورت خودکار ساخته می‌شود."
 
 
@@ -310,6 +320,8 @@ COL_PREDICTION = "پیش‌بینی"
 # --------------------------------------------------------------------------- #
 MSG_ADMIN_ONLY = "این بخش فقط برای مدیر در دسترس است."
 MSG_INVALID_RESULT = "نتیجهٔ واردشده نامعتبر است."
+# Changing a league's settings is restricted to its owner (the league "admin").
+MSG_OWNER_ONLY = "فقط مدیر مسابقه می‌تواند تنظیمات آن را تغییر دهد."
 MSG_EXPORT_INVALID_KEY = "کلید خروجی نامعتبر است."
 
 
