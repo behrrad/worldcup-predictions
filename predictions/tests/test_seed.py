@@ -105,6 +105,34 @@ class SeedCommandTests(TestCase):
         after = Competition.objects.get(slug=sd.WC2026_SLUG).matches.count()
         self.assertEqual(before, after)  # nothing was deleted
 
+    def test_reload_preserves_filled_knockout_teams(self):
+        """An admin fills a knockout match's teams; a reload must NOT wipe them."""
+        from predictions.management.commands.seed_worldcup2026 import DATA_PATH
+        call_command("seed_worldcup2026", verbosity=0)
+        comp = Competition.objects.get(slug=sd.WC2026_SLUG)
+        ko = comp.matches.exclude(stage=consts.Stage.GROUP).order_by("match_number").first()
+        self.assertIsNone(ko.home_team_id)  # starts undecided
+        home, away = comp.teams.all()[0], comp.teams.all()[1]
+        ko.home_team, ko.away_team = home, away
+        ko.save()
+
+        call_command("seed_worldcup2026", "--file", str(DATA_PATH), verbosity=0)  # reload
+
+        ko.refresh_from_db()
+        self.assertEqual(ko.home_team_id, home.id)
+        self.assertEqual(ko.away_team_id, away.id)
+
+    def test_rejects_wrong_match_number_set(self):
+        """104 matches whose numbers aren't exactly 1..104 are rejected (no stale rows)."""
+        from predictions.management.commands.seed_worldcup2026 import DATA_PATH
+        data = json.loads(DATA_PATH.read_text(encoding="utf-8"))
+        data["matches"][0]["match_number"] = 999  # breaks the 1..104 set
+        with tempfile.NamedTemporaryFile("w", suffix=".json", delete=False) as f:
+            json.dump(data, f)
+            bad_path = f.name
+        with self.assertRaises(CommandError):
+            call_command("seed_worldcup2026", "--file", bad_path, verbosity=0)
+
 
 class TestTournamentCommandTests(TestCase):
     def test_creates_compressed_timeline(self):

@@ -40,8 +40,13 @@ def _validate(data):
     code_set = set(codes)
 
     nums = [m.get("match_number") for m in matches]
+    expected_total = sum(EXPECTED_STAGE_COUNTS.values())
     if not all(isinstance(n, int) for n in nums) or len(set(nums)) != len(nums):
         errors.append("شمارهٔ بازی‌ها باید عدد و یکتا باشد.")
+    elif set(nums) != set(range(1, expected_total + 1)):
+        # Require the exact 1..N set: otherwise an upsert would add the listed
+        # numbers while leaving omitted old matches behind as stale fixtures.
+        errors.append(f"شماره‌های بازی باید دقیقاً ۱ تا {expected_total} باشند.")
     stage_counts = Counter(m.get("stage") for m in matches)
     if dict(stage_counts) != EXPECTED_STAGE_COUNTS:
         errors.append(f"تعداد بازی‌های هر مرحله نادرست است: {dict(stage_counts)}")
@@ -110,34 +115,39 @@ class Command(BaseCommand):
             comp.matches.all().delete()
             self.stdout.write(self.style.WARNING("داده‌های قبلی این تورنمنت پاک شد."))
 
-        # Teams carry no user data (predictions reference matches, not teams),
-        # so replacing them outright is always safe.
-        comp.teams.all().delete()
+        # UPSERT teams by code (don't delete-and-recreate): this keeps each Team's
+        # identity, so knockout matches an admin has already filled in keep pointing
+        # at the right team across reloads. Teams that left the tournament (a code no
+        # longer in the file) are pruned afterwards.
         team_map = {}
         for t in data["teams"]:
-            team_map[t["code"]] = Team.objects.create(
-                competition=comp,
-                name_fa=t.get("name_fa") or t["name_en"],
-                name_en=t.get("name_en", ""),
-                code=t["code"],
-                flag_emoji=t.get("flag") or "",
-                group=t.get("group") or "",
+            team, _ = Team.objects.update_or_create(
+                competition=comp, code=t["code"],
+                defaults={
+                    "name_fa": t.get("name_fa") or t["name_en"],
+                    "name_en": t.get("name_en", ""),
+                    "flag_emoji": t.get("flag") or "",
+                    "group": t.get("group") or "",
+                },
             )
+            team_map[t["code"]] = team
+        comp.teams.exclude(code__in=team_map).delete()
 
         # Matches are UPSERTED by match_number, so existing match rows — and the
         # predictions, scores, and entered results attached to them — survive.
+        # Teams are only (re)assigned from the file when it actually names them, so
+        # a reload never wipes admin-filled knockout participants (the JSON has no
+        # home_code/away_code for undecided knockout slots).
         n_group = n_knockout = 0
         for m in sorted(data["matches"], key=lambda x: x["match_number"]):
             kickoff = datetime.fromisoformat(m["kickoff_utc"].replace("Z", "+00:00"))
+            defaults = {"stage": m["stage"], "kickoff": kickoff}
+            if m.get("home_code"):
+                defaults["home_team"] = team_map.get(m["home_code"])
+            if m.get("away_code"):
+                defaults["away_team"] = team_map.get(m["away_code"])
             Match.objects.update_or_create(
-                competition=comp,
-                match_number=m["match_number"],
-                defaults={
-                    "stage": m["stage"],
-                    "home_team": team_map.get(m.get("home_code")),
-                    "away_team": team_map.get(m.get("away_code")),
-                    "kickoff": kickoff,
-                },
+                competition=comp, match_number=m["match_number"], defaults=defaults,
             )
             if m["stage"] == "GROUP":
                 n_group += 1
