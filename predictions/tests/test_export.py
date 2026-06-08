@@ -198,6 +198,36 @@ class ExportBuilderTests(TestCase):
         self.assertEqual(
             ws.cell(row=consts.EXPORT_TOTAL_ROW, column=cols["آلیس"]).value, 0.0)
 
+    def test_cells_are_colour_coded(self):
+        home = make_team(self.comp, name="نروژ")
+        away = make_team(self.comp, name="بلژیک")
+        m = make_match(self.comp, home=home, away=away,
+                       kickoff=self.now - timedelta(hours=2))
+        Prediction.objects.create(membership=self.m_owner, match=m,
+                                  predicted_home=1, predicted_away=0)
+        m.home_score, m.away_score = 1, 0
+        m.save()
+
+        ws = self._build()
+        cols = _name_to_col(ws)
+        r = _row_by_home(ws, "نروژ")
+
+        def bg(cell):
+            return cell.fill.fgColor.rgb  # e.g. "00800B02" — alpha-padded
+
+        # Title banner, gold member header, amber team, navy result, grey points.
+        self.assertTrue(bg(ws.cell(row=consts.EXPORT_TITLE_ROW,
+                                   column=consts.EXPORT_COL_HOME)).endswith(consts.EXPORT_COLOR_TITLE_BG))
+        self.assertTrue(bg(ws.cell(row=consts.EXPORT_TITLE_ROW,
+                                   column=cols["آلیس"])).endswith(consts.EXPORT_COLOR_HEADER_BG))
+        self.assertTrue(bg(ws.cell(row=r, column=consts.EXPORT_COL_HOME)).endswith(consts.EXPORT_COLOR_TEAM_BG))
+        self.assertTrue(bg(ws.cell(row=r, column=consts.EXPORT_COL_ACTUAL_HOME)).endswith(consts.EXPORT_COLOR_RESULT_BG))
+        self.assertTrue(bg(ws.cell(row=r, column=cols["آلیس"] + 2)).endswith(consts.EXPORT_COLOR_POINTS_BG))
+
+        # Readability extras: frozen header/fixture pane + RTL view.
+        self.assertEqual(ws.freeze_panes, "E3")
+        self.assertTrue(ws.sheet_view.rightToLeft)
+
     def test_undecided_knockout_uses_bracket_label(self):
         m = make_match(self.comp, stage=consts.Stage.FINAL,
                        kickoff=self.now + timedelta(days=3))
