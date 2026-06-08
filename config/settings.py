@@ -21,6 +21,15 @@ def env_bool(name: str, default: bool = False) -> bool:
     return os.environ.get(name, str(default)).lower() in {"1", "true", "yes", "on"}
 
 
+# Known dev/placeholder SECRET_KEY values that must never sign sessions in
+# production: Django's auto-generated dev default and the .env.example placeholder.
+INSECURE_SECRET_KEYS = {"change-me-to-a-long-random-string"}
+
+
+def is_insecure_secret_key(key: str) -> bool:
+    return key.startswith("django-insecure-") or key in INSECURE_SECRET_KEYS
+
+
 # --------------------------------------------------------------------------- #
 # Core
 # --------------------------------------------------------------------------- #
@@ -199,12 +208,12 @@ DEFAULT_AUTO_FIELD = "django.db.models.BigAutoField"
 
 # Production-leaning security toggles (enabled automatically when DEBUG is off).
 if not DEBUG:
-    # Refuse to boot in production with the insecure dev SECRET_KEY — a strong
+    # Refuse to boot in production with a known/placeholder SECRET_KEY — a strong
     # key MUST come from the environment / secret manager.
-    if SECRET_KEY.startswith("django-insecure-"):
+    if is_insecure_secret_key(SECRET_KEY):
         raise ImproperlyConfigured(
-            "Set a strong SECRET_KEY environment variable in production "
-            "(the insecure development default is still in use)."
+            "Set a strong, unique SECRET_KEY environment variable in production "
+            "(a known development/placeholder value is still in use)."
         )
 
     SECURE_SSL_REDIRECT = env_bool("SECURE_SSL_REDIRECT", True)
