@@ -44,3 +44,45 @@ TEST_CUP_SCHEDULE = [
     (5, 7, -240, 3, 1, "GROUP"),        # -4h   → finished 3-1
     (0, 4, 360, None, None, "F"),       # +6h   → open FINAL (×1.5 multiplier)
 ]
+
+
+# --------------------------------------------------------------------------- #
+# Reveal-feature demo — a full, self-contained league (owner + members + their
+# predictions) with one match in EVERY state, so the owner's "show others'
+# predictions" toggle and the 30-minute prediction lock can be exercised
+# end-to-end in the running app. Used by the `seed_reveal_demo` command.
+# --------------------------------------------------------------------------- #
+REVEAL_DEMO_COMP_NAME = "دموی نمایش پیش‌بینی"
+REVEAL_DEMO_COMP_SLUG = "reveal-demo"
+REVEAL_DEMO_LEAGUE_NAME = "لیگ دموی نمایش"
+
+# The owner (defaults to the project maintainer's real account so they can test
+# as the league admin in the running app). Overridable via --owner-email.
+REVEAL_DEMO_OWNER_EMAIL = "behrad@zenbase.ai"
+
+# Bot members joined to the demo league. (email, display_name)
+REVEAL_DEMO_MEMBERS = [
+    ("alice+clerk_test@zenbase.ai", "Alice"),
+    ("bob+clerk_test@zenbase.ai", "Bob"),
+    ("carol+clerk_test@zenbase.ai", "Carol"),
+]
+
+# Reuse TEST_CUP_TEAMS; the four demo matches reference these indices.
+# (home_idx, away_idx, minutes_from_now, home_score, away_score, stage)
+REVEAL_DEMO_SCHEDULE = [
+    (0, 1, 120, None, None, "GROUP"),   # +2h   → OPEN (predictions allowed)
+    (2, 3, 10, None, None, "GROUP"),    # +10m  → LOCKED (inside the 30-min window)
+    (4, 5, -20, None, None, "GROUP"),   # -20m  → STARTED (kicked off, no result yet)
+    (6, 7, -120, 2, 1, "F"),            # -2h   → FINISHED 2-1 (final, ×1.5)
+]
+
+# Each member's prediction on each of the four matches above, in order.
+# Chosen so the FINISHED match (آلمان 2-1 انگلیس) yields a spread of tiers:
+#   owner 2-1 → exact · alice 3-2 → diff · bob 4-0 → winner · carol 0-1 → none-ish
+# label "owner" is the --owner-email account; the rest match REVEAL_DEMO_MEMBERS.
+REVEAL_DEMO_PREDICTIONS = {
+    "owner": [(2, 1), (1, 1), (2, 0), (2, 1)],
+    "alice+clerk_test@zenbase.ai": [(0, 0), (2, 2), (1, 1), (3, 2)],
+    "bob+clerk_test@zenbase.ai": [(1, 2), (0, 1), (3, 1), (4, 0)],
+    "carol+clerk_test@zenbase.ai": [(3, 1), (1, 0), (0, 0), (0, 1)],
+}

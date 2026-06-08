@@ -291,3 +291,74 @@ class TestTournamentCommandTests(TestCase):
 
         self.assertTrue(Prediction.objects.filter(membership=mem).exists())
         self.assertEqual(comp.matches.count(), len(sd.TEST_CUP_SCHEDULE))
+
+
+class RevealDemoCommandTests(TestCase):
+    """`seed_reveal_demo` builds a full league (owner + members + predictions)
+    with one match in every state, for exercising the reveal toggle + lock."""
+
+    def _comp_and_league(self):
+        comp = Competition.objects.get(slug=sd.REVEAL_DEMO_COMP_SLUG)
+        league = League.objects.get(competition=comp, name=sd.REVEAL_DEMO_LEAGUE_NAME)
+        return comp, league
+
+    def test_builds_full_demo_league(self):
+        call_command("seed_reveal_demo", verbosity=0)
+        comp, league = self._comp_and_league()
+        # Owner + all bot members are joined.
+        self.assertEqual(league.owner.email, sd.REVEAL_DEMO_OWNER_EMAIL)
+        self.assertEqual(league.memberships.count(), 1 + len(sd.REVEAL_DEMO_MEMBERS))
+        # Reveal defaults to on so the owner can demo turning it off.
+        self.assertTrue(league.reveal_predictions)
+        # Every member predicted every match.
+        self.assertEqual(
+            Prediction.objects.filter(match__competition=comp).count(),
+            len(sd.REVEAL_DEMO_PREDICTIONS) * len(sd.REVEAL_DEMO_SCHEDULE),
+        )
+
+    def test_covers_every_match_state(self):
+        from django.utils import timezone
+
+        call_command("seed_reveal_demo", verbosity=0)
+        comp, _ = self._comp_and_league()
+        now = timezone.now()
+        matches = list(comp.matches.order_by("match_number"))
+        finished = [m for m in matches if m.is_finished]
+        open_ = [m for m in matches if not m.is_finished and m.is_open_for(30, now)]
+        locked = [m for m in matches
+                  if not m.is_finished and not m.is_open_for(30, now)]
+        started = [m for m in locked if m.kickoff <= now]
+        self.assertEqual(len(finished), 1)      # the -2h match
+        self.assertEqual(len(open_), 1)         # the +2h match
+        self.assertEqual(len(locked), 2)        # +10m (pre-kickoff) and -20m (started)
+        self.assertTrue(started)                # at least one already kicked off
+
+    def test_finished_match_is_scored(self):
+        from predictions import scoring
+
+        call_command("seed_reveal_demo", verbosity=0)
+        _, league = self._comp_and_league()
+        rows = scoring.leaderboard(league)
+        top = rows[0]
+        # Owner predicted the exact 2-1 final result: 10 × 1.5 (final) = 15.
+        self.assertEqual(top["membership"].user.email, sd.REVEAL_DEMO_OWNER_EMAIL)
+        self.assertEqual(float(top["total"]), 15.0)
+
+    def test_custom_owner_email(self):
+        call_command("seed_reveal_demo", "--owner-email", "owner@example.com",
+                     verbosity=0)
+        league = League.objects.get(name=sd.REVEAL_DEMO_LEAGUE_NAME)
+        self.assertEqual(league.owner.email, "owner@example.com")
+
+    def test_rerun_is_idempotent(self):
+        call_command("seed_reveal_demo", verbosity=0)
+        call_command("seed_reveal_demo", verbosity=0)  # refresh timings, no dupes
+        self.assertEqual(
+            League.objects.filter(name=sd.REVEAL_DEMO_LEAGUE_NAME).count(), 1
+        )
+        comp, _ = self._comp_and_league()
+        self.assertEqual(comp.matches.count(), len(sd.REVEAL_DEMO_SCHEDULE))
+        self.assertEqual(
+            Prediction.objects.filter(match__competition=comp).count(),
+            len(sd.REVEAL_DEMO_PREDICTIONS) * len(sd.REVEAL_DEMO_SCHEDULE),
+        )
