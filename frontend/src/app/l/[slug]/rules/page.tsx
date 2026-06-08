@@ -17,7 +17,7 @@ export default async function Rules({
       <div className="card">
         <h2 className="card-title">📋 امتیاز هر پیش‌بینی</h2>
         <p className="muted">
-          برای هر بازی، بالاترین موردی که با نتیجه بخواند به شما تعلق می‌گیرد:
+          برای هر بازی، بالاترین حالتی که با نتیجه جور دربیاید به تو می‌رسد:
         </p>
         <table className="rules-table">
           <tbody>
