@@ -3,6 +3,7 @@ Django settings for the World Cup prediction league (پیش‌بینی جام ج
 """
 
 from pathlib import Path
+from urllib.parse import urlparse
 
 import dj_database_url
 from django.core.exceptions import ImproperlyConfigured
@@ -262,7 +263,16 @@ if SUPABASE_S3_BUCKET:
     AWS_S3_FILE_OVERWRITE = False
     AWS_DEFAULT_ACL = None
     AWS_QUERYSTRING_AUTH = False  # public bucket -> stable, shareable URLs
-    STORAGES["default"] = {"BACKEND": "storages.backends.s3.S3Boto3Storage"}
+    # Supabase's S3 endpoint is path-style (bucket lives in the path, not the
+    # host); the default virtual-hosted style would build invalid URLs.
+    AWS_S3_ADDRESSING_STYLE = "path"
+    # Uploads go through the S3 endpoint (authenticated), but objects are *served*
+    # from Supabase's public object URL. Point .url() there so avatar links the
+    # API returns resolve without S3 auth.
+    _s3_host = urlparse(AWS_S3_ENDPOINT_URL).netloc
+    if _s3_host:
+        AWS_S3_CUSTOM_DOMAIN = f"{_s3_host}/storage/v1/object/public/{SUPABASE_S3_BUCKET}"
+    STORAGES["default"] = {"BACKEND": "storages.backends.s3.S3Storage"}
 
 DEFAULT_AUTO_FIELD = "django.db.models.BigAutoField"
 
