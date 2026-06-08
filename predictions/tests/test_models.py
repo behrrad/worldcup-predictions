@@ -1,6 +1,7 @@
 from datetime import timedelta
 from decimal import Decimal
 
+from django.conf import settings
 from django.test import TestCase
 from django.utils import timezone
 
@@ -29,6 +30,16 @@ class SlugTests(TestCase):
         league = make_league(comp, name="رفقای فوتبال")
         self.assertTrue(league.slug)  # unicode slug allowed
         self.assertIn("رفقای", league.slug)
+
+
+class AbsoluteUrlTests(TestCase):
+    def test_points_at_frontend_league_page(self):
+        # Must not raise (it used to reverse a non-existent "league_detail")
+        # and must point at the real Next.js page at FRONTEND_URL/l/<slug>.
+        league = make_league(make_competition(), name="رفقای فوتبال")
+        url = league.get_absolute_url()
+        self.assertEqual(url, f"{settings.FRONTEND_URL}/l/{league.slug}")
+        self.assertTrue(url.startswith(settings.FRONTEND_URL))
 
 
 class MultiplierTests(TestCase):

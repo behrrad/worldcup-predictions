@@ -201,6 +201,11 @@ CORS_ALLOWED_ORIGINS = [
 ]
 CORS_ALLOW_CREDENTIALS = True
 
+# Base URL of the Next.js frontend (the user-facing UI). Used to build
+# absolute links back into the app — e.g. the admin "View on site" button for a
+# League points at its real page at FRONTEND_URL/l/<slug>.
+FRONTEND_URL = os.environ.get("FRONTEND_URL", "http://localhost:3077").rstrip("/")
+
 
 # --------------------------------------------------------------------------- #
 # Internationalization — Persian / RTL

@@ -212,3 +212,31 @@ class LeaderboardTests(TestCase):
         self.assertEqual(by_user[b.id]["rank"], 1)
         self.assertEqual(by_user[c.id]["rank"], 3)
         self.assertEqual(by_user[a.id]["exact_count"], 1)
+
+    def test_member_without_scores_ranks_last(self):
+        # A member with no MatchScore rows (Sum -> NULL) must order as 0, not
+        # float to the top. On Postgres NULL sorts first under "-total", so
+        # without Coalesce the scoreless member would wrongly outrank a scorer.
+        # (SQLite sorts NULL last, so this guards the intended behavior either way.)
+        comp = make_competition()
+        league = make_league(comp)
+        scorer = league.owner
+        scorer_mem = Membership.objects.get(league=league, user=scorer)
+
+        m = make_match(comp)
+        Prediction.objects.create(membership=scorer_mem, match=m, predicted_home=2, predicted_away=1)  # exact 10
+        m.home_score, m.away_score = 2, 1
+        m.save()
+
+        # Joins AFTER scoring ran, so this member has no MatchScore rows.
+        latecomer = join(league).user
+        self.assertFalse(latecomer.memberships.get(league=league).scores.exists())
+
+        board = scoring.leaderboard(league)
+        by_user = {row["membership"].user_id: row for row in board}
+        self.assertEqual(by_user[latecomer.id]["total"], Decimal("0.00"))
+        self.assertEqual(by_user[scorer.id]["rank"], 1)
+        self.assertEqual(by_user[latecomer.id]["rank"], 2)
+        # The scorer leads; the scoreless member never appears above them.
+        self.assertEqual(board[0]["membership"].user_id, scorer.id)
+        self.assertEqual(board[-1]["membership"].user_id, latecomer.id)
