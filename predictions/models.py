@@ -170,6 +170,12 @@ class League(models.Model):
         consts.L_LOCK_MINUTES, default=consts.DEFAULT_LOCK_MINUTES,
         help_text=consts.HELP_LOCK_MINUTES,
     )
+    # When False, other members' predictions stay hidden even after a match
+    # locks. The owner toggles this from the league page.
+    reveal_predictions = models.BooleanField(
+        consts.L_REVEAL_PREDICTIONS, default=consts.DEFAULT_REVEAL_PREDICTIONS,
+        help_text=consts.HELP_REVEAL_PREDICTIONS,
+    )
     points_exact = models.IntegerField(consts.L_POINTS_EXACT, default=consts.DEFAULT_POINTS_EXACT)
     points_correct_diff = models.IntegerField(
         consts.L_POINTS_CORRECT_DIFF, default=consts.DEFAULT_POINTS_CORRECT_DIFF)

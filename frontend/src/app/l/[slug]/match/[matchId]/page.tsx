@@ -60,12 +60,18 @@ export default async function MatchDetail({
           <div className="empty">هنوز کسی برای این بازی پیش‌بینی ثبت نکرده.</div>
         ) : (
           <>
-            {!data.revealed && (
-              <p className="muted center">
-                نتیجهٔ پیش‌بینی‌ها پس از بسته‌شدن (
-                {fmtDateTime(data.lock_time)}) نمایش داده می‌شود.
-              </p>
-            )}
+            {!data.revealed &&
+              (data.reveal_predictions ? (
+                <p className="muted center">
+                  نتیجهٔ پیش‌بینی‌ها پس از بسته‌شدن (
+                  {fmtDateTime(data.lock_time)}) نمایش داده می‌شود.
+                </p>
+              ) : (
+                <p className="muted center">
+                  مدیر مسابقه نمایش پیش‌بینی دیگران را خاموش کرده است؛ پیش‌بینی‌ها
+                  خصوصی می‌مانند.
+                </p>
+              ))}
             <table className="table">
               <thead>
                 <tr>

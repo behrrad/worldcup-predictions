@@ -161,6 +161,40 @@ class SubmitPredictionsTests(AuthedTestCase):
         self.assertEqual(res.json()["saved"], 0)
         self.assertFalse(Prediction.objects.filter(match=m).exists())
 
+    def test_cannot_submit_exactly_at_lock_boundary(self):
+        # Kickoff exactly lock_minutes away => the match is closed *from* that
+        # moment on. With the default 30-minute lock, a kickoff 30 min out must
+        # already reject new predictions.
+        self.assertEqual(self.league.lock_minutes, consts.DEFAULT_LOCK_MINUTES)
+        m = make_match(
+            self.comp,
+            kickoff=self.now + timedelta(minutes=self.league.lock_minutes),
+        )
+        res = self.client.post(
+            reverse("api_submit_predictions", args=[self.league.slug]),
+            {"predictions": [{"match_id": m.id, "home": 1, "away": 0}]},
+            format="json",
+        )
+        self.assertEqual(res.json()["saved"], 0)
+        self.assertFalse(Prediction.objects.filter(match=m).exists())
+
+    def test_cannot_update_existing_prediction_after_lock(self):
+        # A prediction made while the match was open must NOT be editable once the
+        # match is inside the 30-minute lock window.
+        mem = Membership.objects.get(league=self.league, user=self.user)
+        m = make_match(self.comp, kickoff=self.now + timedelta(minutes=10))  # locked
+        Prediction.objects.create(
+            membership=mem, match=m, predicted_home=2, predicted_away=1
+        )
+        res = self.client.post(
+            reverse("api_submit_predictions", args=[self.league.slug]),
+            {"predictions": [{"match_id": m.id, "home": 3, "away": 0}]},
+            format="json",
+        )
+        self.assertEqual(res.json()["saved"], 0)
+        p = Prediction.objects.get(membership=mem, match=m)
+        self.assertEqual((p.predicted_home, p.predicted_away), (2, 1))  # unchanged
+
     def test_updates_existing_prediction(self):
         m = make_match(self.comp, kickoff=self.now + timedelta(hours=2))
         url = reverse("api_submit_predictions", args=[self.league.slug])
@@ -242,6 +276,75 @@ class MatchDetailRevealTests(AuthedTestCase):
         self.assertFalse(row["is_me"])
         self.assertIsNone(row["home"])  # score stays hidden
         self.assertIsNone(row["away"])
+
+
+class RevealPredictionsToggleTests(AuthedTestCase):
+    """The league owner can hide other members' predictions even after lock."""
+
+    def setUp(self):
+        super().setUp()
+        self.league = make_league(self.comp, owner=self.user)  # self.user is owner
+        self.now = timezone.now()
+        # A second member with a prediction on a match that has already locked.
+        self.other = join(self.league)
+        self.match = make_match(self.comp, kickoff=self.now - timedelta(minutes=5))
+        Prediction.objects.create(
+            membership=self.other, match=self.match,
+            predicted_home=3, predicted_away=2,
+        )
+
+    def _match_body(self):
+        return self.client.get(
+            reverse("api_match_detail", args=[self.league.slug, self.match.id])
+        ).json()
+
+    def test_default_reveals_after_lock(self):
+        # Default behaviour is unchanged: once locked, others' picks are shown.
+        body = self._match_body()
+        self.assertTrue(body["reveal_predictions"])
+        self.assertTrue(body["revealed"])
+        row = next(r for r in body["predictions"] if not r["is_me"])
+        self.assertEqual((row["home"], row["away"]), (3, 2))
+
+    def test_league_detail_exposes_flag(self):
+        body = self.client.get(
+            reverse("api_league_detail", args=[self.league.slug])
+        ).json()
+        self.assertTrue(body["reveal_predictions"])
+
+    def test_owner_can_disable_reveal(self):
+        res = self.client.patch(
+            reverse("api_league_detail", args=[self.league.slug]),
+            {"reveal_predictions": False}, format="json",
+        )
+        self.assertEqual(res.status_code, 200)
+        self.assertFalse(res.json()["reveal_predictions"])
+        self.league.refresh_from_db()
+        self.assertFalse(self.league.reveal_predictions)
+
+    def test_disabled_keeps_others_picks_hidden_after_lock(self):
+        self.league.reveal_predictions = False
+        self.league.save(update_fields=["reveal_predictions"])
+        body = self._match_body()
+        # The match is locked, yet picks stay hidden because the owner turned
+        # reveal off. The predictor is still listed by name (participation), but
+        # the actual score is withheld.
+        self.assertFalse(body["revealed"])
+        self.assertFalse(body["reveal_predictions"])
+        row = next(r for r in body["predictions"] if not r["is_me"])
+        self.assertIsNone(row["home"])
+        self.assertIsNone(row["away"])
+
+    def test_non_owner_cannot_toggle(self):
+        member_client = APIClient()
+        member_client.force_authenticate(user=self.other.user)
+        res = member_client.patch(
+            reverse("api_league_detail", args=[self.league.slug]),
+            {"reveal_predictions": False}, format="json",
+        )
+        self.assertEqual(res.status_code, 403)
+        self.league.refresh_from_db()
+        self.assertTrue(self.league.reveal_predictions)  # unchanged
 
 
 class ThrottleTests(AuthedTestCase):

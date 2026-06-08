@@ -2,6 +2,7 @@ import Link from "next/link";
 
 import { serverFetch } from "@/lib/server";
 import { fmtDateTime, fa } from "@/lib/format";
+import RevealToggle from "@/components/RevealToggle";
 import type { LeagueDetail, LeaderRow, MatchT } from "@/lib/types";
 
 export default async function Overview({
@@ -26,6 +27,12 @@ export default async function Overview({
           <h2 className="card-title">🔗 دعوت دوستان</h2>
           <p className="muted">این کد را برای دوستانت بفرست تا به مسابقه بپیوندند:</p>
           <span className="invite-code">{league.invite_code}</span>
+        </div>
+      )}
+
+      {league.is_owner && (
+        <div className="mt">
+          <RevealToggle slug={slug} initial={league.reveal_predictions} />
         </div>
       )}
 

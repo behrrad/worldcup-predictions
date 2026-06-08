@@ -78,6 +78,9 @@ export interface LeagueDetail {
   is_owner: boolean;
   role: string;
   invite_code: string | null;
+  // When false, other members' predictions stay hidden even after a match locks.
+  // Toggled by the owner; see RevealToggle.
+  reveal_predictions: boolean;
   scoring: {
     points_exact: number;
     points_correct_diff: number;
@@ -106,6 +109,9 @@ export interface CompetitionT {
 export interface MatchDetailResp {
   match: MatchT;
   revealed: boolean;
+  // The league's owner-controlled setting. When false, picks never reveal (so a
+  // hidden table means "owner turned it off", not just "not locked yet").
+  reveal_predictions: boolean;
   lock_time: string;
   member_count: number;
   // Before lock: `name`/`is_me` are set but `home`/`away`/`points` are null

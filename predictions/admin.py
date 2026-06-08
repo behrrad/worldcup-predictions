@@ -83,8 +83,9 @@ class LeagueAdmin(admin.ModelAdmin):
                        "invite_code", "is_active", "created_at"),
         }),
         (consts.ADMIN_SECTION_SCORING, {
-            "fields": ("lock_minutes", "points_exact", "points_correct_diff",
-                       "points_correct_winner", "points_participation"),
+            "fields": ("lock_minutes", "reveal_predictions", "points_exact",
+                       "points_correct_diff", "points_correct_winner",
+                       "points_participation"),
         }),
         (consts.ADMIN_SECTION_MULTIPLIERS, {
             "fields": ("multiplier_group", "multiplier_r32", "multiplier_r16",
