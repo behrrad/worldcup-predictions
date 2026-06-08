@@ -54,7 +54,7 @@ uv pip install --python .venv -r requirements.txt
 
 cp .env.example .env        # then fill in DATABASE_URL + CLERK_* values
 .venv/bin/python manage.py migrate
-.venv/bin/python manage.py seed_worldcup2026     # loads the 2026 teams + fixtures
+.venv/bin/python manage.py seed_worldcup2026     # loads the real 2026 schedule (48 teams, 104 matches)
 .venv/bin/python manage.py createsuperuser       # for the /admin panel
 .venv/bin/python manage.py runserver 127.0.0.1:8001
 ```

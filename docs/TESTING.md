@@ -30,7 +30,7 @@ Backend tests live in `accounts/tests/` and `predictions/tests/` (63 tests).
 | `predictions/tests/test_scoring.py` | **The scoring engine.** Every tier (exact / diff / winner / participation / none), draws, knockout multipliers, custom league config, recompute on result entry/change/clear, leaderboard ranking & ties. |
 | `predictions/tests/test_models.py` | Invite-code generation, unicode slugs, per-stage multipliers, `is_finished`/status sync, the **30-minute lock window** (open/closed/after-kickoff/finished). |
 | `predictions/tests/test_api.py` | Auth required (401), create/join/list leagues, owner-only invite code, non-member 404, **prediction lock enforcement** server-side, update-in-place, negative rejection, leaderboard, match-detail reveal-after-lock. |
-| `predictions/tests/test_seed.py` | The 2026 seed command: 48 teams, 72 group + 32 knockout matches, idempotency, Iran present. |
+| `predictions/tests/test_seed.py` | The 2026 seed command loading the **real** schedule: 48 teams, 72 group + 32 knockout matches, real opener (Mexico v South Africa), Iran in group G, idempotent reload **preserving predictions/results**, `--reset` rebuild, and invalid-file rejection (no partial writes). Plus the `seed_test_tournament` compressed-timeline command. |
 | `accounts/tests/test_auth.py` | Clerk auth class (no header / non-Bearer / valid / invalid, all mocked) and user-sync from claims vs Clerk API. |
 
 ## Test design notes

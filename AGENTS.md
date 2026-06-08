@@ -72,8 +72,9 @@ auth** — that earlier approach was removed. Django's own login is only for the
 | `predictions/api_urls.py` | API routes (note: `<str:slug>`, not `<slug:slug>`). |
 | `predictions/admin.py` | Admin: enter results inline, tune scoring, recompute actions. |
 | `predictions/consts.py` | **Every constant & UI string** (see convention §4). |
-| `predictions/seed_data.py` | The 2026 teams/groups/bracket data. |
-| `predictions/management/commands/` | `seed_worldcup2026`, `compute_scores`. |
+| `predictions/data/worldcup2026.json` | **The real, official 2026 schedule** — 48 teams (groups A–L) + all 104 matches with exact UTC kickoffs. Source of truth for the seed. |
+| `predictions/seed_data.py` | Competition name/slug + the small "test cup" data (compressed timeline). |
+| `predictions/management/commands/` | `seed_worldcup2026` (loads the real schedule from the JSON), `seed_test_tournament`, `compute_scores`. |
 | `*/tests/` | Test packages (run with `settings_test`). |
 
 ### Frontend (`frontend/src/`)
@@ -149,9 +150,18 @@ auth** — that earlier approach was removed. Django's own login is only for the
   `predictions/tests/test_scoring.py` to match.**
 
 ### Add another tournament (e.g. a domestic league)
-- Create a `Competition` + `Team`s + `Match`es (admin, or a new seed command
-  modeled on `seed_worldcup2026.py`). Leagues reference a Competition, so the
-  whole flow works unchanged.
+- Create a `Competition` + `Team`s + `Match`es (admin, or a new seed command —
+  `seed_worldcup2026.py` is a good model for a JSON-driven loader,
+  `seed_test_tournament.py` for a procedural one). Leagues reference a
+  Competition, so the whole flow works unchanged.
+
+### Update the World Cup schedule
+- The real data lives in `predictions/data/worldcup2026.json` (teams keyed by
+  `code`; matches keyed by `match_number` with `kickoff_utc`). Edit it, then run
+  `python manage.py seed_worldcup2026` — it validates the whole file first and
+  **upserts by match number, preserving predictions/scores/results**. Use
+  `--reset` for a destructive clean rebuild. Per-match tweaks are also editable
+  in the admin (تیم‌ها / بازی‌ها).
 
 ---
 
@@ -173,7 +183,7 @@ auth** — that earlier approach was removed. Django's own login is only for the
 ```bash
 # Backend
 .venv/bin/python manage.py runserver 127.0.0.1:8001
-.venv/bin/python manage.py seed_worldcup2026 [--reset]
+.venv/bin/python manage.py seed_worldcup2026 [--reset] [--file <path>]   # real 2026 schedule
 .venv/bin/python manage.py compute_scores [--competition <slug>]
 .venv/bin/python manage.py test --settings=config.settings_test
 
