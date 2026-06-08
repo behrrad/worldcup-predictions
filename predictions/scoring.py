@@ -140,13 +140,17 @@ def leaderboard(league):
         [{"rank", "membership", "name", "total", "played", "exact_count"}, ...]
     """
     from django.db.models import Count, Q, Sum
+    from django.db.models.functions import Coalesce
     from .models import Membership
 
+    # Coalesce the sum to 0 so members with no score rows order as zero rather
+    # than NULL. On Postgres, NULL sorts first under "-total" (descending), which
+    # would otherwise float scoreless members to the top of the leaderboard.
     rows = (
         Membership.objects.filter(league=league)
         .select_related("user")
         .annotate(
-            total=Sum("scores__points"),
+            total=Coalesce(Sum("scores__points"), Decimal("0.00")),
             played=Count("scores", filter=Q(scores__tier__isnull=False)),
             exact_count=Count("scores", filter=Q(scores__tier=consts.Tier.EXACT)),
         )

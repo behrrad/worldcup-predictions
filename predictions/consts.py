@@ -144,6 +144,13 @@ INVITE_CODE_ALPHABET = "ABCDEFGHJKMNPQRSTUVWXYZ23456789"
 
 
 # --------------------------------------------------------------------------- #
+# Frontend paths (relative to settings.FRONTEND_URL)
+# --------------------------------------------------------------------------- #
+# A league's page in the Next.js app lives at /l/<slug> (frontend/src/app/l/[slug]).
+LEAGUE_DETAIL_PATH = "/l/{slug}"
+
+
+# --------------------------------------------------------------------------- #
 # Model verbose names
 # --------------------------------------------------------------------------- #
 V_COMPETITION = "تورنمنت (رویداد واقعی)"
