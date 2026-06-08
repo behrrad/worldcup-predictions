@@ -232,7 +232,7 @@ STORAGES = {
 # --------------------------------------------------------------------------- #
 # Media (user uploads — profile avatars)
 # --------------------------------------------------------------------------- #
-MEDIA_URL = os.environ.get("MEDIA_URL", "media/")
+MEDIA_URL = os.environ.get("MEDIA_URL", "/media/")
 MEDIA_ROOT = BASE_DIR / "media"
 
 # When Supabase Storage (S3-compatible) is configured we store user uploads
