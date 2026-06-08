@@ -133,6 +133,34 @@ class SeedCommandTests(TestCase):
         with self.assertRaises(CommandError):
             call_command("seed_worldcup2026", "--file", bad_path, verbosity=0)
 
+    def test_changed_fixture_clears_only_its_stale_predictions(self):
+        """Migrating a match number to a different pairing drops its stale
+        predictions; matches whose fixture is unchanged keep theirs."""
+        from predictions.management.commands.seed_worldcup2026 import DATA_PATH
+        call_command("seed_worldcup2026", verbosity=0)
+        comp = Competition.objects.get(slug=sd.WC2026_SLUG)
+        user = User.objects.create_user(email="m@test.com", password="pw")
+        league = League.objects.create(name="L", competition=comp, owner=user)
+        mem = Membership.objects.create(league=league, user=user, role=consts.Role.OWNER)
+        m1, m2 = comp.matches.get(match_number=1), comp.matches.get(match_number=2)
+        Prediction.objects.create(membership=mem, match=m1, predicted_home=1, predicted_away=0)
+        Prediction.objects.create(membership=mem, match=m2, predicted_home=2, predicted_away=2)
+
+        # Repoint match #1 at a different pairing; leave #2 unchanged.
+        data = json.loads(DATA_PATH.read_text(encoding="utf-8"))
+        by_num = {x["match_number"]: x for x in data["matches"]}
+        used = {by_num[1]["home_code"], by_num[1]["away_code"]}
+        others = [t["code"] for t in data["teams"] if t["code"] not in used][:2]
+        by_num[1]["home_code"], by_num[1]["away_code"] = others
+        with tempfile.NamedTemporaryFile("w", suffix=".json", delete=False) as f:
+            json.dump(data, f)
+            path = f.name
+
+        call_command("seed_worldcup2026", "--file", path, verbosity=0)
+
+        self.assertFalse(Prediction.objects.filter(match=m1).exists())  # fixture changed
+        self.assertTrue(Prediction.objects.filter(match=m2).exists())   # unchanged
+
 
 class TestTournamentCommandTests(TestCase):
     def test_creates_compressed_timeline(self):

@@ -17,7 +17,7 @@ from django.core.management.base import BaseCommand, CommandError
 from django.db import transaction
 
 from predictions import seed_data as sd
-from predictions.models import Competition, Match, Team
+from predictions.models import Competition, Match, MatchScore, Prediction, Team
 
 DATA_PATH = Path(settings.BASE_DIR) / "predictions" / "data" / "worldcup2026.json"
 VALID_STAGES = {"GROUP", "R32", "R16", "QF", "SF", "TP", "F"}
@@ -138,14 +138,33 @@ class Command(BaseCommand):
         # Teams are only (re)assigned from the file when it actually names them, so
         # a reload never wipes admin-filled knockout participants (the JSON has no
         # home_code/away_code for undecided knockout slots).
-        n_group = n_knockout = 0
+        n_group = n_knockout = n_cleared = 0
         for m in sorted(data["matches"], key=lambda x: x["match_number"]):
             kickoff = datetime.fromisoformat(m["kickoff_utc"].replace("Z", "+00:00"))
+            hc, ac = m.get("home_code"), m.get("away_code")
             defaults = {"stage": m["stage"], "kickoff": kickoff}
-            if m.get("home_code"):
-                defaults["home_team"] = team_map.get(m["home_code"])
-            if m.get("away_code"):
-                defaults["away_team"] = team_map.get(m["away_code"])
+            if hc:
+                defaults["home_team"] = team_map.get(hc)
+            if ac:
+                defaults["away_team"] = team_map.get(ac)
+
+            existing = (
+                Match.objects.filter(competition=comp, match_number=m["match_number"])
+                .select_related("home_team", "away_team").first()
+            )
+            # If this match number now points at a *different* fixture than what's
+            # stored (e.g. migrating an old placeholder schedule to the real one),
+            # any predictions/scores on the row were about other teams — drop them
+            # so they aren't silently reattached to the wrong fixture. Unchanged
+            # fixtures keep their predictions (the whole point of the upsert).
+            if existing and (
+                (hc and existing.home_team and existing.home_team.code != hc)
+                or (ac and existing.away_team and existing.away_team.code != ac)
+            ):
+                Prediction.objects.filter(match=existing).delete()
+                MatchScore.objects.filter(match=existing).delete()
+                n_cleared += 1
+
             Match.objects.update_or_create(
                 competition=comp, match_number=m["match_number"], defaults=defaults,
             )
@@ -154,8 +173,13 @@ class Command(BaseCommand):
             else:
                 n_knockout += 1
 
+        if n_cleared:
+            self.stdout.write(self.style.WARNING(
+                f"{n_cleared} بازی فیکسچرشان تغییر کرد؛ پیش‌بینی‌ها و امتیازهای قدیمیِ "
+                f"آن بازی‌ها پاک شد."
+            ))
         self.stdout.write(self.style.SUCCESS(
             f"«{comp.name}» با برنامهٔ واقعی بارگذاری شد: {len(team_map)} تیم، "
             f"{n_group} بازی گروهی و {n_knockout} بازی مرحلهٔ حذفی (با زمان دقیق). "
-            f"پیش‌بینی‌ها و نتایج موجود حفظ شدند."
+            f"پیش‌بینی‌ها و نتایج بازی‌های بدون تغییر حفظ شدند."
         ))
