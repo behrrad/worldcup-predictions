@@ -266,7 +266,8 @@ class TestTournamentCommandTests(TestCase):
         self.assertEqual(comp.matches.count(), len(sd.TEST_CUP_SCHEDULE))
 
         now = timezone.now()
-        states = [(m.is_finished, m.is_open_for(30, now)) for m in comp.matches.all()]
+        states = [(m.is_finished, m.is_open_for(sd.DEMO_LOCK_MINUTES, now))
+                  for m in comp.matches.all()]
         self.assertEqual(sum(1 for f, _ in states if f), 3)          # 3 finished
         self.assertTrue(any(not f and o for f, o in states))         # at least one open
         self.assertTrue(any(not f and not o for f, o in states))     # at least one locked
@@ -310,6 +311,9 @@ class RevealDemoCommandTests(TestCase):
         self.assertEqual(league.memberships.count(), 1 + len(sd.REVEAL_DEMO_MEMBERS))
         # Reveal defaults to on so the owner can demo turning it off.
         self.assertTrue(league.reveal_predictions)
+        # The demo league keeps an early lock (the app default is 0/at-kickoff)
+        # so the "locked before kickoff" state can be demonstrated.
+        self.assertEqual(league.lock_minutes, sd.DEMO_LOCK_MINUTES)
         # Every member predicted every match.
         self.assertEqual(
             Prediction.objects.filter(match__competition=comp).count(),
@@ -324,9 +328,10 @@ class RevealDemoCommandTests(TestCase):
         now = timezone.now()
         matches = list(comp.matches.order_by("match_number"))
         finished = [m for m in matches if m.is_finished]
-        open_ = [m for m in matches if not m.is_finished and m.is_open_for(30, now)]
+        open_ = [m for m in matches
+                 if not m.is_finished and m.is_open_for(sd.DEMO_LOCK_MINUTES, now)]
         locked = [m for m in matches
-                  if not m.is_finished and not m.is_open_for(30, now)]
+                  if not m.is_finished and not m.is_open_for(sd.DEMO_LOCK_MINUTES, now)]
         started = [m for m in locked if m.kickoff <= now]
         self.assertEqual(len(finished), 1)      # the -2h match
         self.assertEqual(len(open_), 1)         # the +2h match

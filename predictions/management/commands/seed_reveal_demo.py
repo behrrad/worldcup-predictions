@@ -63,11 +63,16 @@ class Command(BaseCommand):
             teams.append(team)
 
         # Owner + league (reveal left at its existing value on rerun, so a manual
-        # toggle in the app survives re-seeding).
+        # toggle in the app survives re-seeding). The demo lock is re-applied on
+        # every run: the timeline's LOCKED state needs the early lock to exist.
         owner = self._get_or_make_user(options["owner_email"], display_name="Behrad")
         league, _ = League.objects.get_or_create(
             competition=comp, owner=owner, name=sd.REVEAL_DEMO_LEAGUE_NAME,
+            defaults={"lock_minutes": sd.DEMO_LOCK_MINUTES},
         )
+        if league.lock_minutes != sd.DEMO_LOCK_MINUTES:
+            league.lock_minutes = sd.DEMO_LOCK_MINUTES
+            league.save(update_fields=["lock_minutes"])
         Membership.objects.get_or_create(
             league=league, user=owner, defaults={"role": consts.Role.OWNER}
         )
@@ -120,7 +125,7 @@ class Command(BaseCommand):
     def _state(self, match, now):
         if match.is_finished:
             return f"پایان‌یافته {match.home_score}-{match.away_score}"
-        if match.is_open_for(30, now=now):
+        if match.is_open_for(sd.DEMO_LOCK_MINUTES, now=now):
             return "باز (پیش‌بینی مجاز)"
         if match.kickoff <= now:
             return "شروع‌شده (قفل)"

@@ -41,7 +41,7 @@ A fixture in a Competition.
 References a Competition; carries its **own scoring config** (admin-editable):
 - `owner`, `invite_code` (auto, unambiguous alphabet), `slug` (unicode), `members` (M2M via Membership).
 - Points: `points_exact`, `points_correct_diff`, `points_correct_winner`, `points_participation`.
-- `lock_minutes` (default 30).
+- `lock_minutes` (default 0 — predictions stay open until kickoff; a positive value locks that many minutes earlier).
 - Per-stage multipliers: `multiplier_group`, `multiplier_r32`, `multiplier_r16`,
   `multiplier_qf`, `multiplier_sf`, `multiplier_tp`, `multiplier_final`.
 - `multiplier_for(stage)` returns the right one.

@@ -39,7 +39,7 @@ Returns the league detail object (below) with `invite_code` populated (you are o
   "scoring": {
     "points_exact": 10, "points_correct_diff": 7,
     "points_correct_winner": 5, "points_participation": 2,
-    "lock_minutes": 30,
+    "lock_minutes": 0,
     "stage_multipliers": [ { "stage": "GROUP", "label": "مرحله گروهی", "multiplier": 1.0 }, ... ]
   }
 }

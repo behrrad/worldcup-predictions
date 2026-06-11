@@ -19,6 +19,12 @@ WC2026_SLUG = "world-cup-2026"
 TEST_CUP_NAME = "جام آزمایشی"
 TEST_CUP_SLUG = "test-cup"
 
+# The seeded demo/test data deliberately uses a 30-minute lock (the app default
+# is 0 = open until kickoff): without an early lock, the "locked but not yet
+# kicked off" state below couldn't exist. The reveal-demo league is created
+# with this value; the timelines' LOCKED matches assume it.
+DEMO_LOCK_MINUTES = 30
+
 # (name_fa, code, flag)
 TEST_CUP_TEAMS = [
     ("ایران", "IRN", "🇮🇷"),
@@ -37,8 +43,8 @@ TEST_CUP_SCHEDULE = [
     (0, 1, 300, None, None, "GROUP"),   # +5h   → open
     (2, 3, 180, None, None, "GROUP"),   # +3h   → open
     (4, 5, 90, None, None, "GROUP"),    # +90m  → open
-    (6, 7, 40, None, None, "GROUP"),    # +40m  → open (close to the 30-min lock)
-    (0, 2, 10, None, None, "GROUP"),    # +10m  → LOCKED (inside the 30-min window)
+    (6, 7, 40, None, None, "GROUP"),    # +40m  → open (close to the demo lock)
+    (0, 2, 10, None, None, "GROUP"),    # +10m  → LOCKED (inside the demo lock window)
     (1, 3, -45, 2, 1, "GROUP"),         # -45m  → finished 2-1
     (4, 6, -120, 0, 0, "GROUP"),        # -2h   → finished 0-0
     (5, 7, -240, 3, 1, "GROUP"),        # -4h   → finished 3-1
@@ -49,7 +55,7 @@ TEST_CUP_SCHEDULE = [
 # --------------------------------------------------------------------------- #
 # Reveal-feature demo — a full, self-contained league (owner + members + their
 # predictions) with one match in EVERY state, so the owner's "show others'
-# predictions" toggle and the 30-minute prediction lock can be exercised
+# predictions" toggle and the (demo's 30-minute) prediction lock can be exercised
 # end-to-end in the running app. Used by the `seed_reveal_demo` command.
 # --------------------------------------------------------------------------- #
 REVEAL_DEMO_COMP_NAME = "دموی نمایش پیش‌بینی"
@@ -71,7 +77,7 @@ REVEAL_DEMO_MEMBERS = [
 # (home_idx, away_idx, minutes_from_now, home_score, away_score, stage)
 REVEAL_DEMO_SCHEDULE = [
     (0, 1, 120, None, None, "GROUP"),   # +2h   → OPEN (predictions allowed)
-    (2, 3, 10, None, None, "GROUP"),    # +10m  → LOCKED (inside the 30-min window)
+    (2, 3, 10, None, None, "GROUP"),    # +10m  → LOCKED (inside the demo lock window)
     (4, 5, -20, None, None, "GROUP"),   # -20m  → STARTED (kicked off, no result yet)
     (6, 7, -120, 2, 1, "F"),            # -2h   → FINISHED 2-1 (final, ×1.5)
 ]

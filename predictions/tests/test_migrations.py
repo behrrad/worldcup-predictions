@@ -125,3 +125,43 @@ class ReslugLeaguesTests(TransactionTestCase):
     def tearDown(self):
         # Leave the schema at head for the rest of the suite.
         MigrationExecutor(connection).migrate(self.head)
+
+
+class UnlockUntilKickoffTests(TransactionTestCase):
+    """0007 moves leagues off the old 30-minute lock default to 0 (lock at
+    kickoff) — but leaves deliberately customised lock windows alone."""
+
+    migrate_from = [("predictions", "0006_reslug_leagues_to_latin")]
+    migrate_to = [("predictions", "0007_alter_league_lock_minutes")]
+
+    def test_old_default_rewritten_custom_values_kept(self):
+        from accounts.models import User
+
+        executor = MigrationExecutor(connection)
+        executor.migrate(self.migrate_from)            # before the unlock runs
+        old_apps = executor.loader.project_state(self.migrate_from).apps
+
+        Competition = old_apps.get_model("predictions", "Competition")
+        League = old_apps.get_model("predictions", "League")
+
+        owner = User.objects.create_user(email="owner@test.com", password="pw")
+        comp = Competition.objects.create(name="جام", slug="cup")
+        League.objects.create(name="یک", slug="one", competition=comp,
+                              owner_id=owner.id, invite_code="INVITE01",
+                              export_key="EXPORT01", lock_minutes=30)
+        League.objects.create(name="دو", slug="two", competition=comp,
+                              owner_id=owner.id, invite_code="INVITE02",
+                              export_key="EXPORT02", lock_minutes=60)
+
+        executor = MigrationExecutor(connection)
+        executor.loader.build_graph()
+        executor.migrate(self.migrate_to)
+        new_apps = executor.loader.project_state(self.migrate_to).apps
+
+        League = new_apps.get_model("predictions", "League")
+        self.assertEqual(League.objects.get(invite_code="INVITE01").lock_minutes, 0)
+        self.assertEqual(League.objects.get(invite_code="INVITE02").lock_minutes, 60)
+
+    def tearDown(self):
+        # Leave the schema at the latest migration for the rest of the suite.
+        MigrationExecutor(connection).migrate(self.migrate_to)
