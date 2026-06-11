@@ -47,7 +47,7 @@ class Command(BaseCommand):
             )
             if match.is_finished:
                 finished_n += 1
-            elif match.is_open_for(30, now=now):
+            elif match.is_open_for(sd.DEMO_LOCK_MINUTES, now=now):
                 open_n += 1
             else:
                 locked_n += 1

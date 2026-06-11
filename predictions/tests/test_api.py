@@ -151,8 +151,8 @@ class SubmitPredictionsTests(AuthedTestCase):
         self.assertEqual((p.predicted_home, p.predicted_away), (2, 1))
 
     def test_ignores_locked_match(self):
-        # kickoff in 10 min, lock 30 -> closed
-        m = make_match(self.comp, kickoff=self.now + timedelta(minutes=10))
+        # Kicked off 10 min ago -> closed.
+        m = make_match(self.comp, kickoff=self.now - timedelta(minutes=10))
         res = self.client.post(
             reverse("api_submit_predictions", args=[self.league.slug]),
             {"predictions": [{"match_id": m.id, "home": 1, "away": 0}]},
@@ -161,10 +161,23 @@ class SubmitPredictionsTests(AuthedTestCase):
         self.assertEqual(res.json()["saved"], 0)
         self.assertFalse(Prediction.objects.filter(match=m).exists())
 
+    def test_open_until_kickoff_by_default(self):
+        # The default lock is 0 minutes: a match starting in 5 minutes (which the
+        # old 30-minute default would have locked) still accepts predictions.
+        self.assertEqual(self.league.lock_minutes, consts.DEFAULT_LOCK_MINUTES)
+        m = make_match(self.comp, kickoff=self.now + timedelta(minutes=5))
+        res = self.client.post(
+            reverse("api_submit_predictions", args=[self.league.slug]),
+            {"predictions": [{"match_id": m.id, "home": 2, "away": 2}]},
+            format="json",
+        )
+        self.assertEqual(res.json()["saved"], 1)
+        self.assertTrue(Prediction.objects.filter(match=m).exists())
+
     def test_cannot_submit_exactly_at_lock_boundary(self):
         # Kickoff exactly lock_minutes away => the match is closed *from* that
-        # moment on. With the default 30-minute lock, a kickoff 30 min out must
-        # already reject new predictions.
+        # moment on. With the default 0-minute lock, a match kicking off right
+        # now must already reject new predictions.
         self.assertEqual(self.league.lock_minutes, consts.DEFAULT_LOCK_MINUTES)
         m = make_match(
             self.comp,
@@ -178,11 +191,25 @@ class SubmitPredictionsTests(AuthedTestCase):
         self.assertEqual(res.json()["saved"], 0)
         self.assertFalse(Prediction.objects.filter(match=m).exists())
 
+    def test_respects_custom_lock_minutes(self):
+        # A league that overrides lock_minutes still locks early: with a
+        # 30-minute lock a kickoff 10 minutes out is already closed.
+        self.league.lock_minutes = 30
+        self.league.save(update_fields=["lock_minutes"])
+        m = make_match(self.comp, kickoff=self.now + timedelta(minutes=10))
+        res = self.client.post(
+            reverse("api_submit_predictions", args=[self.league.slug]),
+            {"predictions": [{"match_id": m.id, "home": 1, "away": 0}]},
+            format="json",
+        )
+        self.assertEqual(res.json()["saved"], 0)
+        self.assertFalse(Prediction.objects.filter(match=m).exists())
+
     def test_cannot_update_existing_prediction_after_lock(self):
-        # A prediction made while the match was open must NOT be editable once the
-        # match is inside the 30-minute lock window.
+        # A prediction made while the match was open must NOT be editable once
+        # the match has kicked off.
         mem = Membership.objects.get(league=self.league, user=self.user)
-        m = make_match(self.comp, kickoff=self.now + timedelta(minutes=10))  # locked
+        m = make_match(self.comp, kickoff=self.now - timedelta(minutes=10))  # locked
         Prediction.objects.create(
             membership=mem, match=m, predicted_home=2, predicted_away=1
         )

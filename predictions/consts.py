@@ -77,8 +77,8 @@ DEFAULT_STAGE_MULTIPLIERS = {
     for stage in STAGE_ORDER
 }
 
-# How many minutes before kickoff predictions lock.
-DEFAULT_LOCK_MINUTES = 30
+# How many minutes before kickoff predictions lock. 0 = open until kickoff.
+DEFAULT_LOCK_MINUTES = 0
 
 # Whether other members' predictions are revealed once a match locks. The league
 # owner can turn this off (per league) to keep everyone's picks private — names
@@ -351,7 +351,10 @@ L_COMPUTED_AT = "زمان محاسبه"
 # Help texts
 HELP_INVITE_CODE = "این کد را با دوستانتان به اشتراک بگذارید تا به مسابقه بپیوندند."
 HELP_EXPORT_KEY = "با این کلید هرکسی می‌تواند فایل اکسل نتایج این مسابقه را دانلود کند."
-HELP_LOCK_MINUTES = "پیش‌بینی هر بازی این تعداد دقیقه پیش از شروع بسته می‌شود."
+HELP_LOCK_MINUTES = (
+    "پیش‌بینی هر بازی این تعداد دقیقه پیش از شروع بسته می‌شود. "
+    "۰ یعنی تا لحظهٔ شروع بازی باز می‌ماند."
+)
 HELP_REVEAL_PREDICTIONS = (
     "اگر روشن باشد، پس از بسته‌شدن هر بازی پیش‌بینی دیگران برای همهٔ اعضا "
     "نمایش داده می‌شود. اگر خاموش باشد، پیش‌بینی‌ها همیشه خصوصی می‌مانند."

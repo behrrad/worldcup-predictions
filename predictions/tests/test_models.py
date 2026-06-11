@@ -151,3 +151,13 @@ class LockWindowTests(TestCase):
         kickoff = self.now + timedelta(hours=1)
         m = make_match(self.comp, kickoff=kickoff)
         self.assertEqual(m.lock_time(30), kickoff - timedelta(minutes=30))
+
+    def test_zero_lock_open_right_up_to_kickoff(self):
+        # lock 0 (the default): one minute before kickoff is still open.
+        m = make_match(self.comp, kickoff=self.now + timedelta(minutes=1))
+        self.assertTrue(m.is_open_for(0, now=self.now))
+
+    def test_zero_lock_closed_from_kickoff(self):
+        m = make_match(self.comp, kickoff=self.now)
+        self.assertFalse(m.is_open_for(0, now=self.now))
+        self.assertEqual(m.lock_time(0), m.kickoff)

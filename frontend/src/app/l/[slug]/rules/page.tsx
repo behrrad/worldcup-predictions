@@ -81,7 +81,12 @@ export default async function Rules({
       <div className="card">
         <h2 className="card-title">⏰ زمان بسته‌شدن پیش‌بینی</h2>
         <p>
-          پیش‌بینی هر بازی <strong>{fa(s.lock_minutes)} دقیقه</strong> پیش از شروع
+          پیش‌بینی هر بازی{" "}
+          <strong>
+            {s.lock_minutes > 0
+              ? `${fa(s.lock_minutes)} دقیقه پیش از شروع`
+              : "هنگام شروع"}
+          </strong>{" "}
           آن بسته می‌شود و دیگر قابل تغییر نیست.{" "}
           {league.reveal_predictions
             ? "پیش‌بینی دیگران هم تا آن لحظه برای بقیه قابل دیدن نیست و بعد از آن نمایش داده می‌شود."
