@@ -1,7 +1,8 @@
 import Link from "next/link";
 
 import { serverFetch } from "@/lib/server";
-import { fmtDateTime, fa } from "@/lib/format";
+import { fa } from "@/lib/format";
+import { LocalDateTime } from "@/components/LocalTime";
 import type { MatchT } from "@/lib/types";
 
 export default async function Matches({
@@ -19,7 +20,7 @@ export default async function Matches({
           <div key={m.id}>
             <div className="match-meta">
               <span className="stage-badge">{m.stage_label}</span>
-              <span>{fmtDateTime(m.kickoff)}</span>
+              <span><LocalDateTime iso={m.kickoff} /></span>
               {m.venue && <span className="muted">📍 {m.venue}</span>}
             </div>
             <div className="match">

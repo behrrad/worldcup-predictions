@@ -5,6 +5,7 @@ import { useAuth } from "@clerk/nextjs";
 
 import { apiFetch } from "@/lib/api";
 import { fmtDate, fmtTime, fa } from "@/lib/format";
+import { useTimeZone } from "@/components/LocalTime";
 import type { MatchT } from "@/lib/types";
 
 type Vals = Record<number, { home: string; away: string }>;
@@ -26,6 +27,7 @@ export default function PredictionsForm({
   matches: MatchT[];
 }) {
   const { getToken } = useAuth();
+  const tz = useTimeZone();
 
   const [vals, setVals] = useState<Vals>(() => {
     const init: Vals = {};
@@ -92,7 +94,7 @@ export default function PredictionsForm({
     const out: { label: string; items: MatchT[] }[] = [];
     const seen: Record<string, number> = {};
     for (const m of filtered) {
-      const label = fmtDate(m.kickoff);
+      const label = fmtDate(m.kickoff, tz);
       if (seen[label] === undefined) {
         seen[label] = out.length;
         out.push({ label, items: [] });
@@ -100,7 +102,7 @@ export default function PredictionsForm({
       out[seen[label]].items.push(m);
     }
     return out;
-  }, [filtered]);
+  }, [filtered, tz]);
 
   const hasPred = (m: MatchT) => !!m.my_prediction || predicted.has(m.id);
 
@@ -154,7 +156,7 @@ export default function PredictionsForm({
                   <div className="match-meta">
                     <span className="stage-badge">{m.stage_label}</span>
                     <span>
-                      {fmtTime(m.kickoff)}{" "}
+                      {fmtTime(m.kickoff, tz)}{" "}
                       {m.is_finished ? (
                         <strong>· پایان‌یافته</strong>
                       ) : m.is_open ? (
