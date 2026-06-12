@@ -20,6 +20,33 @@ URL-encoded by the client.
 | POST | `/leagues/<slug>/predictions/` | Submit predictions → `{saved}` |
 | GET | `/leagues/<slug>/leaderboard/` | Ranked standings |
 | GET | `/leagues/<slug>/matches/<id>/` | One match + everyone's predictions (after lock) |
+| GET | `/live/` | In-play scores of matches being played right now (see below) |
+
+### Live scores — GET `/live/`
+
+Display-only in-play state (score, minute, status) for every match currently
+being played, across active competitions. Lazily refreshed from a free live
+provider (ESPN, falling back to Varzesh3) at most once per
+`consts.LIVE_REFRESH_SECONDS` regardless of how many clients poll — and not at
+all when no match could be live. The same `live` object is embedded per match
+in `/leagues/<slug>/matches/`. Live data never feeds the scoring engine; an
+officially finished match never appears here.
+
+```json
+{
+  "checked_at": "2026-06-12T20:45:00+00:00",
+  "matches": [
+    {
+      "id": 3, "kickoff": "2026-06-12T19:00:00+00:00",
+      "home_team": { "name": "کانادا", ... }, "away_team": { "name": "بوسنی و هرزگوین", ... },
+      "status": "LIVE",              // LIVE | HT | FT
+      "status_label": "زنده",
+      "minute": "65",                // only while in play, e.g. "45+4"
+      "home": 0, "away": 1
+    }
+  ]
+}
+```
 
 ## Shapes
 

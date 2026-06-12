@@ -3,6 +3,7 @@ import { notFound } from "next/navigation";
 import { serverFetch } from "@/lib/server";
 import { fa } from "@/lib/format";
 import LeagueTabs from "@/components/LeagueTabs";
+import LiveScores from "@/components/LiveScores";
 import type { LeagueDetail } from "@/lib/types";
 
 export default async function LeagueLayout({
@@ -31,6 +32,7 @@ export default async function LeagueLayout({
         </p>
       </div>
       <LeagueTabs slug={slug} />
+      <LiveScores />
       {children}
     </>
   );

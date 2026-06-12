@@ -1,0 +1,85 @@
+{
+  "events": [
+    {
+      "id": "760416",
+      "date": "2026-06-12T19:00Z",
+      "shortName": "BIH @ CAN",
+      "competitions": [
+        {
+          "competitors": [
+            {
+              "homeAway": "home",
+              "score": "0",
+              "team": {
+                "abbreviation": "CAN",
+                "displayName": "Canada"
+              }
+            },
+            {
+              "homeAway": "away",
+              "score": "1",
+              "team": {
+                "abbreviation": "BIH",
+                "displayName": "Bosnia-Herzegovina"
+              }
+            }
+          ],
+          "status": {
+            "clock": 3240.0,
+            "displayClock": "54'",
+            "period": 2,
+            "type": {
+              "id": "26",
+              "name": "STATUS_SECOND_HALF",
+              "state": "in",
+              "completed": false,
+              "description": "Second Half",
+              "detail": "54'",
+              "shortDetail": "54'"
+            }
+          }
+        }
+      ]
+    },
+    {
+      "id": "760417",
+      "date": "2026-06-13T01:00Z",
+      "shortName": "PAR @ USA",
+      "competitions": [
+        {
+          "competitors": [
+            {
+              "homeAway": "home",
+              "score": "0",
+              "team": {
+                "abbreviation": "USA",
+                "displayName": "United States"
+              }
+            },
+            {
+              "homeAway": "away",
+              "score": "0",
+              "team": {
+                "abbreviation": "PAR",
+                "displayName": "Paraguay"
+              }
+            }
+          ],
+          "status": {
+            "clock": 0.0,
+            "displayClock": "0'",
+            "type": {
+              "id": "1",
+              "name": "STATUS_SCHEDULED",
+              "state": "pre",
+              "completed": false,
+              "description": "Scheduled",
+              "detail": "Fri, June 12th at 9:00 PM EDT",
+              "shortDetail": "Scheduled"
+            }
+          }
+        }
+      ]
+    }
+  ]
+}

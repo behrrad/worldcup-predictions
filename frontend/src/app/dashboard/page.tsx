@@ -4,6 +4,7 @@ import { currentUser } from "@clerk/nextjs/server";
 import { serverFetch } from "@/lib/server";
 import { fa } from "@/lib/format";
 import JoinLeague from "@/components/JoinLeague";
+import LiveScores from "@/components/LiveScores";
 import type { LeagueCard, CompetitionT, MeT } from "@/lib/types";
 
 export default async function Dashboard() {
@@ -23,6 +24,8 @@ export default async function Dashboard() {
         <h1>سلام {name} 👋</h1>
         <p>مسابقه‌های پیش‌بینی تو</p>
       </div>
+
+      <LiveScores />
 
       {me.is_admin && (
         <Link className="card tile" href="/admin/results">

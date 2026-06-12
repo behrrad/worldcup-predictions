@@ -371,3 +371,32 @@ a { color: inherit; text-decoration: none; }
 .pred-legend { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 14px; }
 .pred-legend .pred-chip { font-size: 0.78rem; padding: 3px 11px; }
 .pred-legend .pred-chip .pick { font-size: 0.9rem; }
+
+/* ---------- Live scores (the in-play strip + inline match score) ---------- */
+.live-strip { display: flex; flex-wrap: wrap; gap: 10px; margin-bottom: 18px; }
+.live-chip {
+  display: flex; align-items: center; gap: 10px;
+  background: var(--card); border: 1px solid var(--red);
+  border-radius: 14px; padding: 8px 14px; font-size: 0.92rem; font-weight: 600;
+}
+.live-badge {
+  display: inline-flex; align-items: center; gap: 6px;
+  color: var(--red); font-weight: 800; font-size: 0.8rem;
+}
+.live-dot {
+  width: 8px; height: 8px; border-radius: 50%; background: var(--red);
+  animation: live-pulse 1.4s ease-in-out infinite;
+}
+@keyframes live-pulse {
+  0%, 100% { opacity: 1; transform: scale(1); }
+  50% { opacity: 0.35; transform: scale(0.8); }
+}
+.live-team { display: inline-flex; align-items: center; gap: 4px; }
+.live-score,
+.score-live {
+  font-family: var(--display); font-size: 1.15rem; font-weight: 400;
+  background: var(--red); color: #fff; border-radius: 11px; padding: 2px 12px;
+  white-space: nowrap;
+}
+.score-live { font-size: 1.3rem; padding: 3px 13px; }
+.live-minute { color: var(--red); font-weight: 800; font-size: 0.78rem; }

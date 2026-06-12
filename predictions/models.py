@@ -45,6 +45,12 @@ class Competition(models.Model):
                             allow_unicode=True)
     start_date = models.DateField(consts.L_START_DATE, null=True, blank=True)
     is_active = models.BooleanField(consts.L_IS_ACTIVE, default=True)
+    # When the live-score provider was last consulted for this competition.
+    # Written with queryset.update() as an atomic "claim" so concurrent requests
+    # trigger at most one upstream fetch per consts.LIVE_REFRESH_SECONDS.
+    live_checked_at = models.DateTimeField(
+        consts.L_LIVE_CHECKED_AT, null=True, blank=True,
+    )
 
     class Meta:
         verbose_name = consts.V_COMPETITION
@@ -120,6 +126,22 @@ class Match(models.Model):
     # labels; translated to Persian for display in the API layer.
     home_label = models.CharField(consts.L_HOME_LABEL, max_length=60, blank=True)
     away_label = models.CharField(consts.L_AWAY_LABEL, max_length=60, blank=True)
+    # In-play state from the live-score provider (display only). These are
+    # written with queryset.update() — NEVER through save() — because save()
+    # treats any home_score/away_score as the final result, flips the match to
+    # FINISHED and triggers the scoring recompute. Live data must do none of
+    # that; the official result still arrives only via admin or sync_results.
+    live_home_score = models.PositiveSmallIntegerField(
+        consts.L_LIVE_HOME_SCORE, null=True, blank=True)
+    live_away_score = models.PositiveSmallIntegerField(
+        consts.L_LIVE_AWAY_SCORE, null=True, blank=True)
+    live_minute = models.CharField(
+        consts.L_LIVE_MINUTE, max_length=consts.LIVE_MINUTE_MAX_LENGTH, blank=True)
+    live_status = models.CharField(
+        consts.L_LIVE_STATUS, max_length=consts.LIVE_STATUS_MAX_LENGTH,
+        choices=consts.LIVE_STATUS_CHOICES, blank=True, default=consts.LiveStatus.NONE)
+    live_updated_at = models.DateTimeField(
+        consts.L_LIVE_UPDATED_AT, null=True, blank=True)
 
     class Meta:
         verbose_name = consts.V_MATCH

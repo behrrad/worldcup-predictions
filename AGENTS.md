@@ -73,6 +73,7 @@ and the builder hides predictions for matches that haven't locked yet.
 | `accounts/admin.py` | Admin for users. |
 | `predictions/models.py` | `Competition, Team, Match, League, Membership, Prediction, MatchScore`. |
 | `predictions/scoring.py` | **The scoring engine** + recompute + leaderboard. |
+| `predictions/live.py` | Live in-play scores (ESPN primary, Varzesh3 fallback; lazy fetch-on-read). Writes `Match.live_*` via `queryset.update()` only — **never `save()`**, which would finalize the result and trigger scoring. |
 | `predictions/export.py` | Builds a league's results **.xlsx** (member-per-3-columns layout). Blanks out predictions for matches that haven't locked yet. |
 | `predictions/signals.py` | On `Match` save → recompute everyone's scores. |
 | `predictions/api_views.py` | All JSON endpoints (function-based DRF views). |
