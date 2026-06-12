@@ -11,6 +11,8 @@ urlpatterns = [
     path("players/", api_views.players, name="api_players"),
     path("players/<int:user_id>/", api_views.player_detail, name="api_player_detail"),
     path("competitions/", api_views.competitions, name="api_competitions"),
+    # In-play scores (display only; lazily refreshed from the live provider).
+    path("live/", api_views.live_scores, name="api_live_scores"),
     path("leagues/", api_views.leagues, name="api_leagues"),
     path("leagues/join/", api_views.join_league, name="api_join_league"),
     path("leagues/<str:slug>/", api_views.league_detail, name="api_league_detail"),

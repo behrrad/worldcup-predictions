@@ -337,6 +337,13 @@ L_MULT_SF = "ضریب نیمه‌نهایی"
 L_MULT_TP = "ضریب ردهبندی"
 L_MULT_FINAL = "ضریب فینال"
 
+L_LIVE_HOME_SCORE = "گل میزبان (زنده)"
+L_LIVE_AWAY_SCORE = "گل میهمان (زنده)"
+L_LIVE_MINUTE = "دقیقهٔ بازی (زنده)"
+L_LIVE_STATUS = "وضعیت زنده"
+L_LIVE_UPDATED_AT = "زمان به‌روزرسانی زنده"
+L_LIVE_CHECKED_AT = "آخرین بررسی نتایج زنده"
+
 L_USER = "کاربر"
 L_ROLE = "نقش"
 L_JOINED_AT = "زمان عضویت"
@@ -465,6 +472,89 @@ def bracket_label_fa(label: str) -> str:
     if m := re.fullmatch(r"Match (\d+) Loser", label):
         return BRACKET_MATCH_LOSER.format(n=to_fa_digits(m.group(1)))
     return label
+
+
+# --------------------------------------------------------------------------- #
+# Live scores (in-play state shown on the site; never feeds the scoring engine)
+# --------------------------------------------------------------------------- #
+# In-play state of a match as reported by a live provider. Stored on Match in
+# the live_* fields, which are written with queryset.update() so Match.save()
+# (which would mark the match FINISHED and recompute points) never runs on
+# live data. The official result still arrives via sync_results/admin only.
+class LiveStatus:
+    NONE = ""          # no live information
+    LIVE = "LIVE"      # ball in play (live_minute carries the clock)
+    HALFTIME = "HT"    # between the halves
+    FULL_TIME = "FT"   # provider says it ended; official result may lag behind
+
+
+LIVE_STATUS_LABELS = {
+    LiveStatus.LIVE: "زنده",
+    LiveStatus.HALFTIME: "بین دو نیمه",
+    LiveStatus.FULL_TIME: "پایان بازی",
+}
+
+LIVE_STATUS_CHOICES = [(k, v) for k, v in LIVE_STATUS_LABELS.items()]
+
+LIVE_MINUTE_MAX_LENGTH = 12     # e.g. "45+4", "90+12"
+LIVE_STATUS_MAX_LENGTH = 4
+
+# How long a fetched live snapshot stays fresh. While any match is in its live
+# window, at most one upstream request happens per this many seconds — no
+# matter how many users are polling.
+LIVE_REFRESH_SECONDS = 45
+# Upstream is only consulted when a match could plausibly be in play: kickoff
+# between LIVE_WINDOW_BEFORE_HOURS in the past and LIVE_WINDOW_AFTER_MINUTES in
+# the future (covers 90' + break + stoppage + knockout extra time/penalties).
+LIVE_WINDOW_BEFORE_HOURS = 3
+LIVE_WINDOW_AFTER_MINUTES = 5
+# A provider result only applies to a local match whose kickoff is within this
+# window of the provider's date (same guard idea as the results sync).
+LIVE_MATCH_WINDOW_HOURS = 6
+# An in-play match the provider stopped reporting keeps its live state this
+# long before being cleared — one flaky partial response must not blank an
+# ongoing match, but a dead feed can't leave a stuck "زنده" badge either.
+LIVE_STALE_CLEAR_SECONDS = 600
+
+LIVE_FETCH_TIMEOUT = 8          # seconds, per provider
+# The default "Python-urllib" UA is rejected by some CDNs (same gotcha as
+# accounts/clerk.py and sync_results), so send a real one.
+LIVE_USER_AGENT = "worldcup-predictions/1.0"
+
+# Provider identifiers (recorded for logging/debugging only).
+LIVE_PROVIDER_ESPN = "espn"
+LIVE_PROVIDER_VARZESH3 = "varzesh3"
+
+# ESPN's (unofficial, keyless) World Cup scoreboard. One request returns every
+# match of the current scoreboard day with score, clock and status.
+ESPN_SCOREBOARD_URL = (
+    "https://site.api.espn.com/apis/site/v2/sports/soccer/fifa.world/scoreboard"
+)
+# ESPN status.type.state values
+ESPN_STATE_PRE = "pre"
+ESPN_STATE_IN = "in"
+ESPN_STATE_POST = "post"
+ESPN_STATUS_HALFTIME = "STATUS_HALFTIME"
+ESPN_HOME = "home"
+ESPN_AWAY = "away"
+
+# Varzesh3's (unofficial, keyless) livescore feed — the fallback provider.
+# Returns every league with matches today, all sports mixed (football is
+# sport == 1); teams carry Persian names only, so matching uses name_fa.
+VARZESH3_LIVESCORE_URL = "https://web-api.varzesh3.com/v2.0/livescore/today"
+VARZESH3_SPORT_FOOTBALL = 1
+
+
+# Varzesh3 match status enum (extracted from their web bundle).
+class Varzesh3Status:
+    NOT_STARTED = 1
+    LIVE = 2
+    FINISHED = 7
+
+
+# Varzesh3 reports halftime as status LIVE with this statusTitle and an empty
+# liveTime, so the title string is the only halftime signal.
+VARZESH3_HALFTIME_TITLE = "پایان نیمه"
 
 
 # --------------------------------------------------------------------------- #

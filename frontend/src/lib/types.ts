@@ -32,6 +32,30 @@ export interface AdminMatchT {
   status: string;
 }
 
+// In-play state of a match (display only — points always come from the
+// official result). status: "LIVE" | "HT" | "FT"; minute uses Latin digits
+// like "45+4" — render with fa().
+export interface LiveInfoT {
+  status: string;
+  status_label: string | null;
+  minute: string | null;
+  home: number | null;
+  away: number | null;
+}
+
+// One currently-live match on the /live/ ticker payload.
+export interface LiveMatchT extends LiveInfoT {
+  id: number;
+  kickoff: string;
+  home_team: TeamT | null;
+  away_team: TeamT | null;
+}
+
+export interface LiveScoresResp {
+  checked_at: string;
+  matches: LiveMatchT[];
+}
+
 export interface MatchT {
   id: number;
   stage: string;
@@ -44,6 +68,8 @@ export interface MatchT {
   away_label: string | null;
   home_score: number | null;
   away_score: number | null;
+  // Live (in-play) state, or null when the match isn't being played right now.
+  live: LiveInfoT | null;
   is_finished: boolean;
   is_open: boolean;
   can_predict: boolean;

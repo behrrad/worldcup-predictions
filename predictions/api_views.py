@@ -20,7 +20,7 @@ from rest_framework.permissions import AllowAny
 from rest_framework.response import Response
 
 from accounts import consts as acc_consts
-from . import consts, export, scoring
+from . import consts, export, live, scoring
 from .models import (
     Competition,
     League,
@@ -95,6 +95,21 @@ def _player_card(user, request):
     }
 
 
+def _live_dict(match):
+    """In-play state of a match (display only), or None when there is none.
+    An official result always wins: once a match is finished, live state is
+    suppressed even if the provider's last word still lingers in the DB."""
+    if not match.live_status or match.is_finished:
+        return None
+    return {
+        "status": match.live_status,
+        "status_label": consts.LIVE_STATUS_LABELS.get(match.live_status),
+        "minute": match.live_minute or None,
+        "home": match.live_home_score,
+        "away": match.live_away_score,
+    }
+
+
 def _match_dict(match, league, now, prediction=None, score=None):
     is_open = match.is_open_for(league.lock_minutes, now)
     return {
@@ -111,6 +126,7 @@ def _match_dict(match, league, now, prediction=None, score=None):
         "away_label": consts.bracket_label_fa(match.away_label) if not match.away_team_id else None,
         "home_score": match.home_score,
         "away_score": match.away_score,
+        "live": _live_dict(match),
         "is_finished": match.is_finished,
         "is_open": is_open,
         "can_predict": is_open and bool(match.home_team_id and match.away_team_id),
@@ -473,6 +489,42 @@ def league_leaderboard(request, slug):
         for row in rows
     ]
     return Response(data)
+
+
+@api_view(["GET"])
+def live_scores(request):
+    """Current in-play scores across the active competitions.
+
+    Lazily refreshes from the live provider when the stored snapshot is stale
+    (at most one upstream request per consts.LIVE_REFRESH_SECONDS, none at all
+    when no match can be live) and returns every match that currently carries
+    live state. Officially finished matches never appear — the real result has
+    taken over by then."""
+    now = timezone.now()
+    competitions = list(Competition.objects.filter(is_active=True))
+    for competition in competitions:
+        live.refresh_if_stale(competition, now)
+
+    matches = (
+        Match.objects.filter(competition__in=competitions)
+        .exclude(live_status=consts.LiveStatus.NONE)
+        .exclude(status=consts.MatchStatus.FINISHED)
+        .select_related("home_team", "away_team")
+        .order_by("kickoff", "match_number")
+    )
+    return Response({
+        "checked_at": now.isoformat(),
+        "matches": [
+            {
+                "id": m.id,
+                "kickoff": m.kickoff.isoformat(),
+                "home_team": _team(m.home_team),
+                "away_team": _team(m.away_team),
+                **(_live_dict(m) or {}),
+            }
+            for m in matches
+        ],
+    })
 
 
 @api_view(["GET"])

@@ -1,0 +1,109 @@
+[
+  {
+    "id": 28,
+    "title": "جام جهانی  - گروهی",
+    "sport": 1,
+    "dates": [
+      {
+        "date": "1405/03/22",
+        "matches": [
+          {
+            "id": 441662,
+            "startOnUtc": "2026-06-12T02:00:00Z",
+            "status": 7,
+            "statusTitle": "نتیجه نهایی",
+            "isLive": false,
+            "liveTime": "",
+            "goals": {
+              "host": 2,
+              "guest": 1
+            },
+            "host": {
+              "id": 315,
+              "name": "کره جنوبی"
+            },
+            "guest": {
+              "id": 436,
+              "name": "جمهوری چک"
+            },
+            "winner": 0
+          },
+          {
+            "id": 441669,
+            "startOnUtc": "2026-06-12T19:00:00Z",
+            "status": 2,
+            "statusTitle": "",
+            "isLive": true,
+            "liveTime": "55'",
+            "goals": {
+              "host": 0,
+              "guest": 1
+            },
+            "host": {
+              "id": 365,
+              "name": "کانادا"
+            },
+            "guest": {
+              "id": 371,
+              "name": "بوسنی"
+            }
+          }
+        ]
+      },
+      {
+        "date": "1405/03/23",
+        "matches": [
+          {
+            "id": 441691,
+            "startOnUtc": "2026-06-13T01:00:00Z",
+            "status": 1,
+            "statusTitle": "",
+            "isLive": false,
+            "liveTime": "",
+            "host": {
+              "id": 341,
+              "name": "آمریکا"
+            },
+            "guest": {
+              "id": 450,
+              "name": "پاراگوئه"
+            }
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "id": 30,
+    "title": "لیگ ملت‌های والیبال - هفته 1",
+    "sport": 3,
+    "dates": [
+      {
+        "date": "1405/03/22",
+        "matches": [
+          {
+            "id": 146283,
+            "startOnUtc": "2026-06-11T23:00:00Z",
+            "status": 7,
+            "statusTitle": "نتیجه نهایی",
+            "isLive": false,
+            "points": {
+              "host": 3,
+              "guest": 1,
+              "active": false
+            },
+            "host": {
+              "id": 599,
+              "name": "برزیل"
+            },
+            "guest": {
+              "id": 900970,
+              "name": "بلژیک"
+            },
+            "winner": 0
+          }
+        ]
+      }
+    ]
+  }
+]

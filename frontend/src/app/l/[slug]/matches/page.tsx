@@ -22,6 +22,13 @@ export default async function Matches({
               <span className="stage-badge">{m.stage_label}</span>
               <span><LocalDateTime iso={m.kickoff} /></span>
               {m.venue && <span className="muted">📍 {m.venue}</span>}
+              {m.live && (
+                <span className="live-minute">
+                  {m.live.status === "LIVE" && m.live.minute
+                    ? `● ${fa(m.live.minute)}′ زنده`
+                    : m.live.status_label}
+                </span>
+              )}
             </div>
             <div className="match">
               <div className="team home">
@@ -32,6 +39,10 @@ export default async function Matches({
                 {m.is_finished ? (
                   <span className="score-final">
                     {fa(m.home_score!)} : {fa(m.away_score!)}
+                  </span>
+                ) : m.live ? (
+                  <span className="score-live">
+                    {fa(m.live.home ?? "؟")} : {fa(m.live.away ?? "؟")}
                   </span>
                 ) : (
                   "—"
