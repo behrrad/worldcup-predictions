@@ -20,7 +20,7 @@ from rest_framework.permissions import AllowAny
 from rest_framework.response import Response
 
 from accounts import consts as acc_consts
-from . import consts, export, live, scoring
+from . import consts, export, live, results_sync, scoring
 from .models import (
     Competition,
     League,
@@ -476,19 +476,26 @@ def submit_predictions(request, slug):
 @api_view(["GET"])
 def league_leaderboard(request, slug):
     membership = _get_membership(request, slug)
-    rows = scoring.leaderboard(membership.league)
-    data = [
-        {
-            "rank": row["rank"],
-            "name": row["name"],
-            "total": float(row["total"]),
-            "played": row["played"],
-            "exact_count": row["exact_count"],
-            "is_me": row["membership"].user_id == request.user.id,
-        }
-        for row in rows
-    ]
-    return Response(data)
+    rows, is_live = scoring.live_leaderboard(membership.league)
+    return Response({
+        # True while at least one match carries in-play state: the live_*
+        # fields then differ from the official ones and deserve their own tab.
+        "is_live": is_live,
+        "rows": [
+            {
+                "rank": row["rank"],
+                "name": row["name"],
+                "total": float(row["total"]),
+                "played": row["played"],
+                "exact_count": row["exact_count"],
+                "is_me": row["membership"].user_id == request.user.id,
+                "live_rank": row["live_rank"],
+                "live_total": float(row["live_total"]),
+                "live_points": float(row["live_points"]),
+            }
+            for row in rows
+        ],
+    })
 
 
 @api_view(["GET"])
@@ -504,6 +511,9 @@ def live_scores(request):
     competitions = list(Competition.objects.filter(is_active=True))
     for competition in competitions:
         live.refresh_if_stale(competition, now)
+        # When a match looks over, pull the official result so it finalizes
+        # (and everyone's points recompute) minutes after full time — no cron.
+        results_sync.finalize_if_due(competition, now)
 
     matches = (
         Match.objects.filter(competition__in=competitions)

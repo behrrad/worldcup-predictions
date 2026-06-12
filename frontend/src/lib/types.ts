@@ -128,6 +128,19 @@ export interface LeaderRow {
   played: number;
   exact_count: number;
   is_me: boolean;
+  // Live view: official total plus provisional points from in-play matches
+  // (the current live score played as the final result). When nothing is
+  // live these mirror the official fields.
+  live_rank: number;
+  live_total: number;
+  live_points: number;
+}
+
+export interface LeaderboardResp {
+  // True while at least one match is in play — the live view then differs
+  // from the official one and the UI shows both tabs.
+  is_live: boolean;
+  rows: LeaderRow[];
 }
 
 export interface CompetitionT {

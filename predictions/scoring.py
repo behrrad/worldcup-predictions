@@ -53,6 +53,26 @@ def base_points_for_tier(league, tier: str) -> int:
     }[tier]
 
 
+def provisional_points(league, match, prediction, actual_home, actual_away):
+    """
+    (Decimal points, tier) a prediction would earn if the match ended
+    actual_home–actual_away. `prediction` may be None when nothing was
+    submitted in time. Used both for real results (via score_prediction)
+    and for the live leaderboard, where the in-play score plays the result.
+    """
+    if prediction is None:
+        return Decimal("0.00"), consts.Tier.NONE
+
+    tier = base_tier(
+        prediction.predicted_home, prediction.predicted_away,
+        actual_home, actual_away,
+    )
+    base = Decimal(base_points_for_tier(league, tier))
+    multiplier = Decimal(league.multiplier_for(match.stage))
+    points = (base * multiplier).quantize(_CENTS, rounding=ROUND_HALF_UP)
+    return points, tier
+
+
 def score_prediction(league, match, prediction):
     """
     Compute (Decimal points, tier) for one member's prediction on a finished
@@ -61,18 +81,9 @@ def score_prediction(league, match, prediction):
     """
     if not match.is_finished:
         return None
-
-    if prediction is None:
-        return Decimal("0.00"), consts.Tier.NONE
-
-    tier = base_tier(
-        prediction.predicted_home, prediction.predicted_away,
-        match.home_score, match.away_score,
+    return provisional_points(
+        league, match, prediction, match.home_score, match.away_score,
     )
-    base = Decimal(base_points_for_tier(league, tier))
-    multiplier = Decimal(league.multiplier_for(match.stage))
-    points = (base * multiplier).quantize(_CENTS, rounding=ROUND_HALF_UP)
-    return points, tier
 
 
 # --------------------------------------------------------------------------- #
@@ -175,3 +186,72 @@ def leaderboard(league):
             "exact_count": m.exact_count or 0,
         })
     return table
+
+
+# --------------------------------------------------------------------------- #
+# Live leaderboard — in-play scores played as if they were the final result
+# --------------------------------------------------------------------------- #
+def live_overlay(league):
+    """
+    Provisional extra points per membership from matches in play right now,
+    treating the current live score as the final result. Returns
+    {membership_id: Decimal} — empty when no match carries live state, so the
+    caller knows there is nothing "live" to show. Display-only: nothing here
+    is persisted, MatchScore rows still come only from official results.
+    """
+    from .models import Match, Membership, Prediction
+
+    live_matches = list(
+        Match.objects.filter(competition=league.competition)
+        .exclude(live_status=consts.LiveStatus.NONE)
+        .exclude(status=consts.MatchStatus.FINISHED)
+        .filter(live_home_score__isnull=False, live_away_score__isnull=False)
+    )
+    if not live_matches:
+        return {}
+
+    predictions = {
+        (p.membership_id, p.match_id): p
+        for p in Prediction.objects.filter(
+            match__in=live_matches, membership__league=league,
+        )
+    }
+    overlay = {}
+    member_ids = Membership.objects.filter(league=league).values_list("id", flat=True)
+    for membership_id in member_ids:
+        total = Decimal("0.00")
+        for match in live_matches:
+            points, _tier = provisional_points(
+                league, match, predictions.get((membership_id, match.id)),
+                match.live_home_score, match.live_away_score,
+            )
+            total += points
+        overlay[membership_id] = total
+    return overlay
+
+
+def live_leaderboard(league):
+    """
+    The official table with a live view layered on: every row also carries
+    live_points (the provisional delta from in-play matches), live_total and
+    live_rank. Returns (table, is_live); when nothing is live the live_*
+    fields simply mirror the official ones.
+    """
+    table = leaderboard(league)
+    overlay = live_overlay(league)
+    for row in table:
+        delta = overlay.get(row["membership"].id, Decimal("0.00"))
+        row["live_points"] = delta
+        row["live_total"] = row["total"] + delta
+
+    ordered = sorted(
+        table, key=lambda r: (-r["live_total"], r["membership"].joined_at),
+    )
+    rank = 0
+    prev_total = object()
+    for i, row in enumerate(ordered, start=1):
+        if row["live_total"] != prev_total:
+            rank = i
+            prev_total = row["live_total"]
+        row["live_rank"] = rank
+    return table, bool(overlay)

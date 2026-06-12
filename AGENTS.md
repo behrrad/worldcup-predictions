@@ -72,8 +72,9 @@ and the builder hides predictions for matches that haven't locked yet.
 | `accounts/authentication.py` | DRF auth class that calls `clerk.py`. |
 | `accounts/admin.py` | Admin for users. |
 | `predictions/models.py` | `Competition, Team, Match, League, Membership, Prediction, MatchScore`. |
-| `predictions/scoring.py` | **The scoring engine** + recompute + leaderboard. |
+| `predictions/scoring.py` | **The scoring engine** + recompute + leaderboard (official + the live provisional view). |
 | `predictions/live.py` | Live in-play scores (ESPN primary, Varzesh3 fallback; lazy fetch-on-read). Writes `Match.live_*` via `queryset.update()` only — **never `save()`**, which would finalize the result and trigger scoring. |
+| `predictions/results_sync.py` | Official results from football-data.org: core of the `sync_results` command **and** `finalize_if_due` — the lazy, claim-gated auto-finalization the live endpoint triggers once a match looks over (no cron). The only pipeline allowed to `Match.save()` provider data. |
 | `predictions/export.py` | Builds a league's results **.xlsx** (member-per-3-columns layout). Blanks out predictions for matches that haven't locked yet. |
 | `predictions/signals.py` | On `Match` save → recompute everyone's scores. |
 | `predictions/api_views.py` | All JSON endpoints (function-based DRF views). |
