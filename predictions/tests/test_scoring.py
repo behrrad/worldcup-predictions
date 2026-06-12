@@ -240,3 +240,97 @@ class LeaderboardTests(TestCase):
         # The scorer leads; the scoreless member never appears above them.
         self.assertEqual(board[0]["membership"].user_id, scorer.id)
         self.assertEqual(board[-1]["membership"].user_id, latecomer.id)
+
+
+class LiveLeaderboardTests(TestCase):
+    """The live view: in-play scores played as if they were the final result."""
+
+    def setUp(self):
+        self.comp = make_competition()
+        self.league = make_league(self.comp)
+        self.a_mem = Membership.objects.get(league=self.league, user=self.league.owner)
+        self.b_mem = join(self.league)
+
+    def _go_live(self, match, home, away, status=consts.LiveStatus.LIVE):
+        # The sanctioned write path for live state (never save()).
+        type(match).objects.filter(pk=match.pk).update(
+            live_home_score=home, live_away_score=away, live_status=status,
+        )
+        match.refresh_from_db()
+
+    def test_no_live_match_mirrors_official(self):
+        m = make_match(self.comp)
+        Prediction.objects.create(membership=self.a_mem, match=m,
+                                  predicted_home=2, predicted_away=1)
+        m.home_score, m.away_score = 2, 1
+        m.save()
+
+        table, is_live = scoring.live_leaderboard(self.league)
+        self.assertFalse(is_live)
+        by_user = {row["membership"].id: row for row in table}
+        row = by_user[self.a_mem.id]
+        self.assertEqual(row["live_total"], row["total"])
+        self.assertEqual(row["live_rank"], row["rank"])
+        self.assertEqual(row["live_points"], Decimal("0.00"))
+
+    def test_live_match_adds_provisional_points_and_reranks(self):
+        # Official: B leads 10-2 from a finished match.
+        done = make_match(self.comp)
+        Prediction.objects.create(membership=self.b_mem, match=done,
+                                  predicted_home=2, predicted_away=1)  # exact 10
+        Prediction.objects.create(membership=self.a_mem, match=done,
+                                  predicted_home=0, predicted_away=2)  # wrong 2
+        done.home_score, done.away_score = 2, 1
+        done.save()
+
+        # Live: A predicted the in-play score exactly, B has no prediction.
+        playing = make_match(self.comp)
+        Prediction.objects.create(membership=self.a_mem, match=playing,
+                                  predicted_home=1, predicted_away=0)
+        self._go_live(playing, 1, 0)
+
+        table, is_live = scoring.live_leaderboard(self.league)
+        self.assertTrue(is_live)
+        by_mem = {row["membership"].id: row for row in table}
+        a, b = by_mem[self.a_mem.id], by_mem[self.b_mem.id]
+        # Official standings are untouched...
+        self.assertEqual((a["rank"], b["rank"]), (2, 1))
+        self.assertEqual(a["total"], Decimal("2.00"))
+        # ...but the live view has A 2+10=12 over B 10+0, flipping the lead.
+        self.assertEqual(a["live_points"], Decimal("10.00"))
+        self.assertEqual(a["live_total"], Decimal("12.00"))
+        self.assertEqual(b["live_points"], Decimal("0.00"))
+        self.assertEqual((a["live_rank"], b["live_rank"]), (1, 2))
+        # And nothing was persisted for the in-play match.
+        self.assertFalse(playing.scores.exists())
+
+    def test_full_time_pending_official_still_counts_as_live(self):
+        # Provider says FT but the official result hasn't landed yet: the live
+        # view keeps counting it so the board doesn't flicker back.
+        playing = make_match(self.comp)
+        Prediction.objects.create(membership=self.a_mem, match=playing,
+                                  predicted_home=3, predicted_away=0)
+        self._go_live(playing, 3, 0, status=consts.LiveStatus.FULL_TIME)
+
+        table, is_live = scoring.live_leaderboard(self.league)
+        self.assertTrue(is_live)
+        by_mem = {row["membership"].id: row for row in table}
+        self.assertEqual(by_mem[self.a_mem.id]["live_points"], Decimal("10.00"))
+
+    def test_finished_match_never_double_counts(self):
+        # Once the official result lands, lingering live state must not add on
+        # top of the real MatchScore rows.
+        m = make_match(self.comp)
+        Prediction.objects.create(membership=self.a_mem, match=m,
+                                  predicted_home=2, predicted_away=0)
+        self._go_live(m, 2, 0, status=consts.LiveStatus.FULL_TIME)
+        m.home_score, m.away_score = 2, 0
+        m.save()  # official result -> FINISHED + MatchScore
+
+        table, is_live = scoring.live_leaderboard(self.league)
+        self.assertFalse(is_live)
+        by_mem = {row["membership"].id: row for row in table}
+        row = by_mem[self.a_mem.id]
+        self.assertEqual(row["total"], Decimal("10.00"))
+        self.assertEqual(row["live_total"], Decimal("10.00"))
+        self.assertEqual(row["live_points"], Decimal("0.00"))

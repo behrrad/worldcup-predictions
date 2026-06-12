@@ -51,6 +51,12 @@ class Competition(models.Model):
     live_checked_at = models.DateTimeField(
         consts.L_LIVE_CHECKED_AT, null=True, blank=True,
     )
+    # Same claim pattern for the lazy official-results sync: when a match looks
+    # over but has no official result yet, at most one football-data.org fetch
+    # happens per consts.RESULTS_SYNC_SECONDS (see predictions/results_sync.py).
+    results_checked_at = models.DateTimeField(
+        consts.L_RESULTS_CHECKED_AT, null=True, blank=True,
+    )
 
     class Meta:
         verbose_name = consts.V_COMPETITION

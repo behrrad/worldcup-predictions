@@ -32,6 +32,14 @@ all when no match could be live. The same `live` object is embedded per match
 in `/leagues/<slug>/matches/`. Live data never feeds the scoring engine; an
 officially finished match never appears here.
 
+Calling this endpoint also lazily **finalizes results**: when a match looks
+over (the provider reports full time, or kickoff is `RESULTS_PENDING_AFTER_HOURS`
+past) but has no official result yet, the football-data.org sync runs behind
+an atomic claim on `Competition.results_checked_at` (at most once per
+`consts.RESULTS_SYNC_SECONDS`), so the official result — and everyone's
+points — land minutes after the final whistle with no cron and no manual
+entry. Manual entry in the admin still works and wins.
+
 ```json
 {
   "checked_at": "2026-06-12T20:45:00+00:00",
@@ -97,8 +105,20 @@ ignored. Returns `{ "saved": <count> }`.
 
 ### Leaderboard — GET `/leagues/<slug>/leaderboard/`
 ```json
-[ { "rank": 1, "name": "علی", "total": 17.0, "played": 3, "exact_count": 1, "is_me": true }, ... ]
+{
+  "is_live": true,                      // a match is in play: live_* differ from official
+  "rows": [
+    {
+      "rank": 1, "name": "علی", "total": 17.0, "played": 3, "exact_count": 1, "is_me": true,
+      "live_rank": 2, "live_total": 17.0, "live_points": 0.0
+    }
+  ]
+}
 ```
+`live_*` is the provisional view: the current score of in-play matches played
+as if it were the final result (`live_points` is the delta on top of `total`).
+Display-only — `MatchScore` rows still come exclusively from official results.
+When nothing is live, `is_live` is false and `live_*` mirror the official fields.
 
 ### Match detail — GET `/leagues/<slug>/matches/<id>/`
 ```json

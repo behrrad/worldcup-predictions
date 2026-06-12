@@ -251,9 +251,32 @@ class LeaderboardApiTests(AuthedTestCase):
         m.save()
         res = self.client.get(reverse("api_leaderboard", args=[league.slug]))
         self.assertEqual(res.status_code, 200)
-        row = res.json()[0]
+        body = res.json()
+        # Nothing in play: the live view mirrors the official one.
+        self.assertFalse(body["is_live"])
+        row = body["rows"][0]
         self.assertEqual(row["total"], 10.0)
         self.assertTrue(row["is_me"])
+        self.assertEqual(row["live_total"], 10.0)
+        self.assertEqual(row["live_rank"], row["rank"])
+        self.assertEqual(row["live_points"], 0.0)
+
+    def test_leaderboard_live_view_counts_in_play_score(self):
+        league = make_league(self.comp, owner=self.user)
+        mem = Membership.objects.get(league=league, user=self.user)
+        m = make_match(self.comp)
+        Prediction.objects.create(membership=mem, match=m, predicted_home=1, predicted_away=0)
+        # In-play state arrives via queryset.update() (the live.py write path).
+        Match.objects.filter(pk=m.pk).update(
+            live_status=consts.LiveStatus.LIVE, live_home_score=1, live_away_score=0,
+        )
+        body = self.client.get(reverse("api_leaderboard", args=[league.slug])).json()
+        self.assertTrue(body["is_live"])
+        row = body["rows"][0]
+        self.assertEqual(row["total"], 0.0)          # official: nothing yet
+        self.assertEqual(row["live_points"], 10.0)   # exact on the live score
+        self.assertEqual(row["live_total"], 10.0)
+        self.assertEqual(row["live_rank"], 1)
 
 
 class MatchDetailRevealTests(AuthedTestCase):

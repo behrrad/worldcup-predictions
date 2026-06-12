@@ -4,7 +4,7 @@ import { serverFetch } from "@/lib/server";
 import { fa } from "@/lib/format";
 import { LocalDateTime } from "@/components/LocalTime";
 import RevealToggle from "@/components/RevealToggle";
-import type { LeagueDetail, LeaderRow, MatchT } from "@/lib/types";
+import type { LeagueDetail, LeaderboardResp, MatchT } from "@/lib/types";
 
 export default async function Overview({
   params,
@@ -14,12 +14,12 @@ export default async function Overview({
   const { slug } = await params;
   const [league, board, matches] = await Promise.all([
     serverFetch(`/leagues/${slug}/`) as Promise<LeagueDetail>,
-    serverFetch(`/leagues/${slug}/leaderboard/`) as Promise<LeaderRow[]>,
+    serverFetch(`/leagues/${slug}/leaderboard/`) as Promise<LeaderboardResp>,
     serverFetch(`/leagues/${slug}/matches/`) as Promise<MatchT[]>,
   ]);
 
   const upcoming = matches.filter((m) => !m.is_finished).slice(0, 5);
-  const top = board.slice(0, 5);
+  const top = board.rows.slice(0, 5);
 
   return (
     <>

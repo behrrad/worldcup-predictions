@@ -400,3 +400,17 @@ a { color: inherit; text-decoration: none; }
 }
 .score-live { font-size: 1.3rem; padding: 3px 13px; }
 .live-minute { color: var(--red); font-weight: 800; font-size: 0.78rem; }
+
+/* ---------- Live leaderboard (official / live tabs on the scoreboard) ---------- */
+button.tab { cursor: pointer; font: inherit; font-weight: 600; }
+.tab .live-dot { display: inline-block; margin-inline-end: 2px; }
+.tab.active .live-dot { background: #fff; }
+.live-delta {
+  display: inline-block; margin-inline-start: 8px; padding: 1px 8px;
+  background: var(--red); color: #fff; border-radius: 999px;
+  font-size: 0.72rem; font-weight: 800; vertical-align: 2px; white-space: nowrap;
+}
+.rank-move { margin-inline-start: 5px; font-size: 0.7rem; }
+.rank-move.up { color: #14893c; }
+.rank-move.down { color: var(--red); }
+.live-note { margin: 12px 4px 0; font-size: 0.82rem; }

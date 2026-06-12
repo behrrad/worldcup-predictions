@@ -343,6 +343,7 @@ L_LIVE_MINUTE = "دقیقهٔ بازی (زنده)"
 L_LIVE_STATUS = "وضعیت زنده"
 L_LIVE_UPDATED_AT = "زمان به‌روزرسانی زنده"
 L_LIVE_CHECKED_AT = "آخرین بررسی نتایج زنده"
+L_RESULTS_CHECKED_AT = "آخرین همگام‌سازی خودکار نتایج"
 
 L_USER = "کاربر"
 L_ROLE = "نقش"
@@ -586,4 +587,19 @@ MSG_SYNC_DONE = (
     "همگام‌سازی نتایج انجام شد: {updated} به‌روزرسانی، {unchanged} بدون تغییر، "
     "{unmatched} بدون تطبیق (از {total} بازی پایان‌یافتهٔ دریافتی)."
 )
+
+# --------------------------------------------------------------------------- #
+# Lazy results finalization — official result fetched once a match looks over
+# --------------------------------------------------------------------------- #
+# When a match looks over (live provider reports full time, or kickoff is long
+# enough past) but has no official result yet, the live API endpoint lazily
+# runs the football-data.org sync behind an atomic claim on
+# Competition.results_checked_at (same pattern as the live refresh): at most
+# one upstream request per this many seconds, none when nothing is pending.
+RESULTS_SYNC_SECONDS = 180
+# A match counts as "pending finalization" from this long after kickoff even
+# without a live FT signal (covers a dead live feed) ...
+RESULTS_PENDING_AFTER_HOURS = 2
+# ... and stops being chased after this long — by then it's the admin's call.
+RESULTS_PENDING_MAX_HOURS = 24
 
