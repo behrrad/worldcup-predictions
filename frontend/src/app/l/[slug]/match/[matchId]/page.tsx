@@ -1,5 +1,6 @@
 import { serverFetch } from "@/lib/server";
-import { fmtDateTime, fa } from "@/lib/format";
+import { fa } from "@/lib/format";
+import { LocalDateTime } from "@/components/LocalTime";
 import type { MatchDetailResp } from "@/lib/types";
 
 export default async function MatchDetail({
@@ -18,7 +19,7 @@ export default async function MatchDetail({
       <div className="card">
         <div className="match-meta">
           <span className="stage-badge">{m.stage_label}</span>
-          <span>{fmtDateTime(m.kickoff)}</span>
+          <span><LocalDateTime iso={m.kickoff} /></span>
           {m.venue && <span className="muted">📍 {m.venue}</span>}
         </div>
         <div className="match">
@@ -64,7 +65,7 @@ export default async function MatchDetail({
               (data.reveal_predictions ? (
                 <p className="muted center">
                   نتیجهٔ پیش‌بینی‌ها پس از بسته‌شدن (
-                  {fmtDateTime(data.lock_time)}) نمایش داده می‌شود.
+                  <LocalDateTime iso={data.lock_time} />) نمایش داده می‌شود.
                 </p>
               ) : (
                 <p className="muted center">

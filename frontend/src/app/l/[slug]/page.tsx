@@ -1,7 +1,8 @@
 import Link from "next/link";
 
 import { serverFetch } from "@/lib/server";
-import { fmtDateTime, fa } from "@/lib/format";
+import { fa } from "@/lib/format";
+import { LocalDateTime } from "@/components/LocalTime";
 import RevealToggle from "@/components/RevealToggle";
 import type { LeagueDetail, LeaderRow, MatchT } from "@/lib/types";
 
@@ -55,7 +56,7 @@ export default async function Overview({
               <div key={m.id}>
                 <div className="match-meta">
                   <span className="stage-badge">{m.stage_label}</span>
-                  <span>{fmtDateTime(m.kickoff)}</span>
+                  <span><LocalDateTime iso={m.kickoff} /></span>
                 </div>
                 <div className="match">
                   <div className="team home">

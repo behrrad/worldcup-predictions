@@ -1,6 +1,7 @@
 import { serverFetch } from "@/lib/server";
-import { fmtDateTime, fa } from "@/lib/format";
+import { fa } from "@/lib/format";
 import Avatar from "@/components/Avatar";
+import { LocalDateTime } from "@/components/LocalTime";
 import type {
   AllPredictionsResp,
   AllPredMatch,
@@ -38,7 +39,7 @@ function MatchCard({ m, memberCount }: { m: AllPredMatch; memberCount: number })
     <div className="card mt allpred-card">
       <div className="match-meta">
         <span className="stage-badge">{m.stage_label}</span>
-        <span>{fmtDateTime(m.kickoff)}</span>
+        <span><LocalDateTime iso={m.kickoff} /></span>
         {m.revealed ? (
           <span className="lock-open">نمایش داده شد</span>
         ) : m.is_open ? (

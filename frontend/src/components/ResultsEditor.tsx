@@ -5,6 +5,7 @@ import { useAuth } from "@clerk/nextjs";
 
 import { apiFetch } from "@/lib/api";
 import { fmtDate, fmtTime, fa } from "@/lib/format";
+import { useTimeZone } from "@/components/LocalTime";
 import type { AdminMatchT } from "@/lib/types";
 
 type Vals = Record<number, { home: string; away: string }>;
@@ -29,6 +30,7 @@ export default function ResultsEditor({
   matches: AdminMatchT[];
 }) {
   const { getToken } = useAuth();
+  const tz = useTimeZone();
   const [matches, setMatches] = useState<AdminMatchT[]>(initial);
   const [vals, setVals] = useState<Vals>(() => {
     const init: Vals = {};
@@ -80,7 +82,7 @@ export default function ResultsEditor({
     const out: { label: string; items: AdminMatchT[] }[] = [];
     const seen: Record<string, number> = {};
     for (const m of visible) {
-      const label = fmtDate(m.kickoff);
+      const label = fmtDate(m.kickoff, tz);
       if (seen[label] === undefined) {
         seen[label] = out.length;
         out.push({ label, items: [] });
@@ -88,7 +90,7 @@ export default function ResultsEditor({
       out[seen[label]].items.push(m);
     }
     return out;
-  }, [visible]);
+  }, [visible, tz]);
 
   const pendingCount = matches.filter((m) => !m.is_finished).length;
   const count = (k: Filter) => (k === "pending" ? pendingCount : matches.length);
@@ -126,7 +128,7 @@ export default function ResultsEditor({
                   <div className="match-meta">
                     <span className="stage-badge">{m.stage_label}</span>
                     <span>
-                      {fmtTime(m.kickoff)}{" "}
+                      {fmtTime(m.kickoff, tz)}{" "}
                       {m.is_finished ? (
                         <strong>· نتیجه ثبت‌شده</strong>
                       ) : (

@@ -1,26 +1,31 @@
-const TZ = "Asia/Tehran";
+/**
+ * Timezone used on the server and during hydration, where the viewer's real
+ * timezone is unknown. Client code passes `useTimeZone()` (components/LocalTime)
+ * to render in the viewer's local timezone instead.
+ */
+export const SSR_TZ = "Asia/Tehran";
 
 /** Persian (Jalali) date + time, e.g. «۲۱ خرداد ۱۴۰۵، ۲۱:۳۰». */
-export function fmtDateTime(iso: string): string {
+export function fmtDateTime(iso: string, timeZone: string = SSR_TZ): string {
   return new Intl.DateTimeFormat("fa-IR", {
     dateStyle: "medium",
     timeStyle: "short",
-    timeZone: TZ,
+    timeZone,
   }).format(new Date(iso));
 }
 
 /** Persian (Jalali) full date with weekday, e.g. «پنجشنبه ۲۱ خرداد ۱۴۰۵». */
-export function fmtDate(iso: string): string {
+export function fmtDate(iso: string, timeZone: string = SSR_TZ): string {
   return new Intl.DateTimeFormat("fa-IR", {
     dateStyle: "full",
-    timeZone: TZ,
+    timeZone,
   }).format(new Date(iso));
 }
 
-export function fmtTime(iso: string): string {
+export function fmtTime(iso: string, timeZone: string = SSR_TZ): string {
   return new Intl.DateTimeFormat("fa-IR", {
     timeStyle: "short",
-    timeZone: TZ,
+    timeZone,
   }).format(new Date(iso));
 }
 
