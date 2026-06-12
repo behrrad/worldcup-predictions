@@ -19,7 +19,11 @@ export function useTimeZone(): string {
   );
 }
 
-/** Jalali date + time in the viewer's local timezone (for Server Components). */
+/**
+ * Jalali date + time in the viewer's local timezone. A client-component leaf,
+ * so Server Components can drop it in wherever they render a kickoff.
+ */
 export function LocalDateTime({ iso }: { iso: string }) {
-  return <>{fmtDateTime(iso, useTimeZone())}</>;
+  const tz = useTimeZone();
+  return <>{fmtDateTime(iso, tz)}</>;
 }
