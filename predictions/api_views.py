@@ -20,7 +20,7 @@ from rest_framework.permissions import AllowAny
 from rest_framework.response import Response
 
 from accounts import consts as acc_consts
-from . import consts, export, live, results_sync, scoring, telegram
+from . import consts, export, live, recap, results_sync, scoring, telegram
 from .models import (
     Competition,
     League,
@@ -199,6 +199,44 @@ def _get_membership(request, slug):
         )
     except Membership.DoesNotExist:
         raise NotFound(consts.MSG_NOT_A_MEMBER)
+
+
+# -- matchday recap serialization (rich objects from recap.py -> JSON) -------- #
+def _recap_player(membership, request):
+    user = membership.user
+    return {
+        "id": user.id,
+        "name": user.public_name,
+        "avatar": _avatar_url(user, request),
+        "is_me": user.id == request.user.id,
+    }
+
+
+def _recap_match_mini(match):
+    """A compact match card for the recap (no per-viewer prediction fields)."""
+    return {
+        "id": match.id,
+        "stage": match.stage,
+        "stage_label": consts.STAGE_LABELS.get(match.stage),
+        "kickoff": match.kickoff.isoformat(),
+        "home_team": _team(match.home_team),
+        "away_team": _team(match.away_team),
+        "home_label": consts.bracket_label_fa(match.home_label) if not match.home_team_id else None,
+        "away_label": consts.bracket_label_fa(match.away_label) if not match.away_team_id else None,
+        "home_score": match.home_score,
+        "away_score": match.away_score,
+    }
+
+
+def _recap_call(score, match, prediction):
+    """One member's standout prediction: the fixture, their pick, and the payoff."""
+    return {
+        "match": _recap_match_mini(match),
+        "prediction": {"home": prediction.predicted_home, "away": prediction.predicted_away},
+        "points": float(score.points),
+        "tier": score.tier,
+        "tier_label": consts.TIER_LABELS.get(score.tier),
+    }
 
 
 # --------------------------------------------------------------------------- #
@@ -559,6 +597,99 @@ def league_leaderboard(request, slug):
                 "live_points": float(row["live_points"]),
             }
             for row in rows
+        ],
+    })
+
+
+@api_view(["GET"])
+def league_recap(request, slug):
+    """The animated end-of-day "story" for one matchday in a league.
+
+    `?date=YYYY-MM-DD` picks the matchday (defaults to the latest finished day).
+    Returns the day's results, the viewer's personal summary, and the league-wide
+    superlatives — all computed in recap.py; here we just shape it into JSON."""
+    membership = _get_membership(request, slug)
+    data = recap.build_recap(membership.league, membership, request.query_params.get("date"))
+
+    me = data["me"]
+    if me is not None:
+        best = me["best"]
+        me = {
+            "participated": me["participated"],
+            "predicted": me["predicted"],
+            "total": me["total"],
+            "points": float(me["points"]),
+            "hits": {
+                "exact": me["hits"][consts.Tier.EXACT],
+                "diff": me["hits"][consts.Tier.DIFF],
+                "winner": me["hits"][consts.Tier.WINNER],
+                "participation": me["hits"][consts.Tier.PARTICIPATION],
+                "missed": me["hits"][consts.Tier.NONE],
+            },
+            "best_call": _recap_call(*best) if best else None,
+            "rank_before": me["rank_before"],
+            "rank_after": me["rank_after"],
+            "rank_delta": me["rank_delta"],
+            "total_before": float(me["total_before"]),
+            "total_after": float(me["total_after"]),
+            "is_top_scorer": me["is_top_scorer"],
+            "day_avg": round(float(me["day_avg"]), 1),
+        }
+
+    def _move(rec):  # mover / faller share a shape: player + rank change
+        return (
+            {**_recap_player(rec["membership"], request),
+             "from_rank": rec["from_rank"], "to_rank": rec["to_rank"],
+             "delta": rec["delta"]}
+            if rec else None
+        )
+
+    general = data["general"]
+    if general is not None:
+        ts, bc, sp = general["top_scorer"], general["best_call"], general["surprise"]
+        general = {
+            "top_scorer": (
+                {**_recap_player(ts["membership"], request),
+                 "points": float(ts["points"]), "ties": ts["ties"]}
+                if ts else None
+            ),
+            "best_call": (
+                {**_recap_player(bc["membership"], request),
+                 **_recap_call(bc["score"], bc["match"], bc["prediction"]),
+                 "also_count": bc["also_count"]}
+                if bc else None
+            ),
+            "surprise": (
+                {"match": _recap_match_mini(sp["match"]),
+                 "correct_count": sp["correct_count"],
+                 "predicted_count": sp["predicted_count"]}
+                if sp else None
+            ),
+            "mover": _move(general["mover"]),
+            "faller": _move(general["faller"]),
+            "podium": [
+                {**_recap_player(p["membership"], request),
+                 "rank": p["rank"], "total": float(p["total"])}
+                for p in general["podium"]
+            ],
+        }
+
+    return Response({
+        "date": data["date"],
+        "available_dates": data["available_dates"],
+        "matches": [
+            {**_recap_match_mini(item["match"]), "predicted_count": item["predicted_count"]}
+            for item in data["matches"]
+        ],
+        "me": me,
+        "general": general,
+        "scoreboard": [
+            {**_recap_player(r["membership"], request),
+             "rank_before": r["rank_before"], "rank_after": r["rank_after"],
+             "total": float(r["total"]), "total_before": float(r["total_before"]),
+             "day_points": float(r["day_points"]),
+             "match_points": [float(p) for p in r["match_points"]]}
+            for r in data["scoreboard"]
         ],
     })
 

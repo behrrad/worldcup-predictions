@@ -20,9 +20,21 @@ export default async function Overview({
 
   const upcoming = matches.filter((m) => !m.is_finished).slice(0, 5);
   const top = board.rows.slice(0, 5);
+  const hasFinished = matches.some((m) => m.is_finished);
 
   return (
     <>
+      {hasFinished && (
+        <Link className="recap-banner" href={`/l/${slug}/recap`}>
+          <span className="recap-banner-emoji">🎬</span>
+          <span className="recap-banner-text">
+            <b>جمع‌بندی روز آماده است</b>
+            <span className="muted">امتیاز، بهترین پیش‌بینی و جابه‌جایی رتبه‌ها را ببین</span>
+          </span>
+          <span className="recap-banner-cta">تماشا ←</span>
+        </Link>
+      )}
+
       {league.is_owner && league.invite_code && (
         <div className="card">
           <h2 className="card-title">🔗 دعوت دوستان</h2>
