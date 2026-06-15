@@ -1,4 +1,5 @@
 from django.contrib import admin
+from unfold.admin import ModelAdmin, TabularInline
 
 from . import consts, scoring
 from .models import (
@@ -13,14 +14,14 @@ from .models import (
 )
 
 
-class TeamInline(admin.TabularInline):
+class TeamInline(TabularInline):
     model = Team
     extra = 0
     fields = ("group", "name_fa", "name_en", "code", "flag_emoji")
 
 
 @admin.register(Competition)
-class CompetitionAdmin(admin.ModelAdmin):
+class CompetitionAdmin(ModelAdmin):
     list_display = ("name", "start_date", "is_active", "team_count", "match_count")
     list_filter = ("is_active",)
     search_fields = ("name",)
@@ -37,14 +38,14 @@ class CompetitionAdmin(admin.ModelAdmin):
 
 
 @admin.register(Team)
-class TeamAdmin(admin.ModelAdmin):
+class TeamAdmin(ModelAdmin):
     list_display = ("name_fa", "name_en", "code", "group", "competition")
     list_filter = ("competition", "group")
     search_fields = ("name_fa", "name_en", "code")
 
 
 @admin.register(Match)
-class MatchAdmin(admin.ModelAdmin):
+class MatchAdmin(ModelAdmin):
     list_display = (
         "match_label", "stage", "kickoff", "home_score", "away_score", "status",
     )
@@ -68,7 +69,7 @@ class MatchAdmin(admin.ModelAdmin):
 
 
 @admin.register(League)
-class LeagueAdmin(admin.ModelAdmin):
+class LeagueAdmin(ModelAdmin):
     list_display = ("name", "competition", "owner", "invite_code",
                     "member_count", "is_active", "created_at")
     list_filter = ("competition", "is_active")
@@ -115,7 +116,7 @@ class LeagueAdmin(admin.ModelAdmin):
 
 
 @admin.register(Membership)
-class MembershipAdmin(admin.ModelAdmin):
+class MembershipAdmin(ModelAdmin):
     list_display = ("user", "league", "role", "joined_at")
     list_filter = ("league", "role")
     search_fields = ("user__email", "user__display_name", "league__name")
@@ -123,7 +124,7 @@ class MembershipAdmin(admin.ModelAdmin):
 
 
 @admin.register(Prediction)
-class PredictionAdmin(admin.ModelAdmin):
+class PredictionAdmin(ModelAdmin):
     list_display = ("membership", "match", "predicted_home", "predicted_away", "updated_at")
     list_filter = ("match__competition", "match__stage")
     search_fields = ("membership__user__email", "membership__user__display_name")
@@ -131,7 +132,7 @@ class PredictionAdmin(admin.ModelAdmin):
 
 
 @admin.register(MatchScore)
-class MatchScoreAdmin(admin.ModelAdmin):
+class MatchScoreAdmin(ModelAdmin):
     list_display = ("membership", "match", "points", "tier", "computed_at")
     list_filter = ("tier", "match__competition", "match__stage")
     search_fields = ("membership__user__email", "membership__user__display_name")

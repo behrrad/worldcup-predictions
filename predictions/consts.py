@@ -402,6 +402,17 @@ COL_SCORE = "نتیجه"
 COL_MEMBER_COUNT = "تعداد اعضا"
 COL_PREDICTION = "پیش‌بینی"
 
+# --- Admin theme (django-unfold) ---------------------------------------------
+# Verbose plurals for the two auth models, so the themed sidebar can label them
+# in Persian alongside the prediction models (which already have V_* names).
+V_USER_PLURAL = "کاربران"
+V_GROUP_PLURAL = "گروه‌ها"
+# Sidebar section headings grouping the models in the Unfold navigation.
+ADMIN_NAV_GROUP_PREDICTIONS = "پیش‌بینی"
+ADMIN_NAV_GROUP_ACCOUNTS = "حساب‌ها"
+# Short label shown above the table-filter rail.
+ADMIN_FILTER_TITLE = "فیلترها"
+
 
 # --------------------------------------------------------------------------- #
 # In-app admin (manual result entry)

@@ -7,6 +7,7 @@ from urllib.parse import urlparse
 
 import dj_database_url
 from django.core.exceptions import ImproperlyConfigured
+from django.urls import reverse_lazy
 from dotenv import load_dotenv
 import os
 
@@ -69,6 +70,11 @@ CSRF_TRUSTED_ORIGINS = [
 # Applications
 # --------------------------------------------------------------------------- #
 INSTALLED_APPS = [
+    # django-unfold re-skins the admin. It MUST come before django.contrib.admin
+    # so its templates/static override Django's defaults. `contrib.filters` adds
+    # the nicer filter widgets used in the changelist rail.
+    "unfold",
+    "unfold.contrib.filters",
     "django.contrib.admin",
     "django.contrib.auth",
     "django.contrib.contenttypes",
@@ -82,6 +88,76 @@ INSTALLED_APPS = [
     "accounts",
     "predictions",
 ]
+
+# --------------------------------------------------------------------------- #
+# Admin theme (django-unfold)
+# --------------------------------------------------------------------------- #
+# Re-skins the Django admin: branded header, dark/light toggle, and the grouped
+# RTL sidebar. Persian copy comes from consts (project convention); icons are
+# Material Symbols names and colours are the host-palette red (matches the
+# frontend's --red). Sidebar links reverse the admin changelist URLs lazily.
+UNFOLD = {
+    "SITE_TITLE": consts.BRAND_NAME,
+    "SITE_HEADER": consts.BRAND_NAME,
+    "SITE_SUBHEADER": consts.ADMIN_INDEX_TITLE,
+    "SITE_SYMBOL": "sports_soccer",   # Material Symbols icon shown in the header
+    "SHOW_HISTORY": True,
+    "SHOW_VIEW_ON_SITE": True,
+    "SHOW_LANGUAGES": False,
+    "COLORS": {
+        # Brand red (frontend --red #ef3e42 / --red-press #d62f33) as a Tailwind
+        # scale; Unfold wants space-separated RGB channels per shade.
+        "primary": {
+            "50": "254 242 242",
+            "100": "254 226 226",
+            "200": "254 202 202",
+            "300": "252 165 165",
+            "400": "248 113 113",
+            "500": "239 62 66",
+            "600": "214 47 51",
+            "700": "185 28 28",
+            "800": "153 27 27",
+            "900": "127 29 29",
+            "950": "69 10 10",
+        },
+    },
+    "SIDEBAR": {
+        "show_search": True,
+        "show_all_applications": False,
+        "navigation": [
+            {
+                "title": consts.ADMIN_NAV_GROUP_PREDICTIONS,
+                "separator": False,
+                "items": [
+                    {"title": consts.V_COMPETITION_PLURAL, "icon": "emoji_events",
+                     "link": reverse_lazy("admin:predictions_competition_changelist")},
+                    {"title": consts.V_TEAM_PLURAL, "icon": "flag",
+                     "link": reverse_lazy("admin:predictions_team_changelist")},
+                    {"title": consts.V_MATCH_PLURAL, "icon": "sports_soccer",
+                     "link": reverse_lazy("admin:predictions_match_changelist")},
+                    {"title": consts.V_LEAGUE_PLURAL, "icon": "scoreboard",
+                     "link": reverse_lazy("admin:predictions_league_changelist")},
+                    {"title": consts.V_MEMBERSHIP_PLURAL, "icon": "group",
+                     "link": reverse_lazy("admin:predictions_membership_changelist")},
+                    {"title": consts.V_PREDICTION_PLURAL, "icon": "edit_note",
+                     "link": reverse_lazy("admin:predictions_prediction_changelist")},
+                    {"title": consts.V_MATCHSCORE_PLURAL, "icon": "star",
+                     "link": reverse_lazy("admin:predictions_matchscore_changelist")},
+                ],
+            },
+            {
+                "title": consts.ADMIN_NAV_GROUP_ACCOUNTS,
+                "separator": True,
+                "items": [
+                    {"title": consts.V_USER_PLURAL, "icon": "person",
+                     "link": reverse_lazy("admin:accounts_user_changelist")},
+                    {"title": consts.V_GROUP_PLURAL, "icon": "groups",
+                     "link": reverse_lazy("admin:auth_group_changelist")},
+                ],
+            },
+        ],
+    },
+}
 
 MIDDLEWARE = [
     "corsheaders.middleware.CorsMiddleware",
