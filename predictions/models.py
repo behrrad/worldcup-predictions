@@ -402,3 +402,58 @@ class MatchScore(models.Model):
 
     def __str__(self):
         return f"{self.membership.user.public_name}: {self.points}"
+
+
+# --------------------------------------------------------------------------- #
+# Telegram reminders (predictions/telegram.py)
+# --------------------------------------------------------------------------- #
+class NotificationLog(models.Model):
+    """One row per reminder already sent — the idempotency guard.
+
+    The (user, kind, dedup_key) unique constraint makes every send fire at most
+    once: a daily digest is keyed by the local date, a pre-kickoff nudge by the
+    match id. The runner get_or_create()s a row *before* sending and deletes it
+    again if the send fails, so a failed send retries on the next tick.
+    """
+
+    user = models.ForeignKey(
+        settings.AUTH_USER_MODEL, on_delete=models.CASCADE,
+        related_name="notification_logs", verbose_name=consts.L_USER,
+    )
+    kind = models.CharField(
+        consts.L_NOTIFY_KIND, max_length=consts.NOTIFY_KIND_MAX_LENGTH,
+        choices=consts.NOTIFY_KIND_CHOICES,
+    )
+    dedup_key = models.CharField(
+        consts.L_NOTIFY_DEDUP_KEY, max_length=consts.NOTIFY_DEDUP_KEY_MAX_LENGTH,
+    )
+    sent_at = models.DateTimeField(consts.L_NOTIFY_SENT_AT, auto_now_add=True)
+
+    class Meta:
+        verbose_name = consts.V_NOTIFICATION_LOG
+        verbose_name_plural = consts.V_NOTIFICATION_LOG_PLURAL
+        ordering = ["-sent_at"]
+        constraints = [
+            models.UniqueConstraint(
+                fields=["user", "kind", "dedup_key"], name="unique_notification",
+            ),
+        ]
+
+    def __str__(self):
+        return f"{self.user.public_name}: {self.kind} {self.dedup_key}"
+
+
+class TelegramState(models.Model):
+    """Singleton (pk=1) holding the getUpdates long-poll offset and the atomic
+    claim timestamp that limits how often the bot is polled — there is no public
+    webhook, so updates are pulled on the tick / when the connect page waits."""
+
+    update_offset = models.BigIntegerField(consts.L_TELEGRAM_UPDATE_OFFSET, default=0)
+    polled_at = models.DateTimeField(consts.L_TELEGRAM_POLLED_AT, null=True, blank=True)
+
+    class Meta:
+        verbose_name = consts.V_TELEGRAM_STATE
+        verbose_name_plural = consts.V_TELEGRAM_STATE_PLURAL
+
+    def __str__(self):
+        return f"offset={self.update_offset}"

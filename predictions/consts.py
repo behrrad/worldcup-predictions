@@ -476,6 +476,16 @@ def bracket_label_fa(label: str) -> str:
 
 
 # --------------------------------------------------------------------------- #
+# Matchday recap (the animated end-of-day story; see predictions/recap.py)
+# --------------------------------------------------------------------------- #
+# A "matchday" is a calendar day — in this timezone — on which at least one
+# match finished. The recap groups, ranks and compares that day's results.
+RECAP_DATE_FORMAT = "%Y-%m-%d"
+# How many members the closing "podium" card shows (current standings top N).
+RECAP_PODIUM_SIZE = 3
+
+
+# --------------------------------------------------------------------------- #
 # Live scores (in-play state shown on the site; never feeds the scoring engine)
 # --------------------------------------------------------------------------- #
 # In-play state of a match as reported by a live provider. Stored on Match in
@@ -602,4 +612,120 @@ RESULTS_SYNC_SECONDS = 180
 RESULTS_PENDING_AFTER_HOURS = 2
 # ... and stops being chased after this long — by then it's the admin's call.
 RESULTS_PENDING_MAX_HOURS = 24
+
+
+# --------------------------------------------------------------------------- #
+# Telegram reminders (predictions/telegram.py)
+# --------------------------------------------------------------------------- #
+# A Telegram bot DMs members who haven't predicted a match yet: a once-a-day
+# morning digest of today's open matches, plus a final nudge shortly before
+# kickoff. Linking is one-tap: the website hands out a deep link carrying a
+# short, single-use token; tapping "Start" in the bot sends /start <token>,
+# which we resolve to the user and store their chat id.
+#
+# Everything is env-gated (no token configured -> every send/poll is a silent
+# no-op), uses urllib (no new dependency), and follows the same atomic-claim,
+# no-cron philosophy as live.py / results_sync.py. The periodic work is driven
+# by an external scheduler (GitHub Actions) hitting the secret-gated tick
+# endpoint; that one call also refreshes live scores and finalizes results, so
+# reminders and auto-finalization both work even when no user is on the site.
+
+# Env var names (read in config/settings.py).
+TELEGRAM_BOT_TOKEN_ENV = "TELEGRAM_BOT_TOKEN"
+TELEGRAM_BOT_USERNAME_ENV = "TELEGRAM_BOT_USERNAME"
+TASK_TRIGGER_KEY_ENV = "TASK_TRIGGER_KEY"
+
+# Telegram Bot API.
+TELEGRAM_API_BASE = "https://api.telegram.org/bot{token}"
+TELEGRAM_METHOD_SEND_MESSAGE = "sendMessage"
+TELEGRAM_METHOD_GET_UPDATES = "getUpdates"
+TELEGRAM_PARSE_MODE = "HTML"
+TELEGRAM_FETCH_TIMEOUT = 10           # seconds, per API call
+TELEGRAM_USER_AGENT = "worldcup-predictions/1.0"  # default urllib UA is blocked
+TELEGRAM_GET_UPDATES_LIMIT = 100
+# Only message updates from a private chat can link an account.
+TELEGRAM_CHAT_TYPE_PRIVATE = "private"
+TELEGRAM_START_COMMAND = "/start"
+TELEGRAM_STOP_COMMAND = "/stop"
+
+# One-tap linking: the deep link the website hands out, and the single-use
+# token it carries. Telegram's start payload only allows [A-Za-z0-9_-] (max 64
+# chars), so the token is token_urlsafe(...) (~22 chars), not a signed blob.
+TELEGRAM_DEEP_LINK = "https://t.me/{username}?start={token}"
+TELEGRAM_LINK_TOKEN_BYTES = 16
+TELEGRAM_LINK_TOKEN_MAX_AGE_SECONDS = 3600   # a link token is valid for one hour
+
+# getUpdates is polled (no public webhook) behind an atomic claim on the
+# singleton TelegramState row: at most one drain per this many seconds, however
+# many requests arrive (the connect page polls while waiting for the link).
+TELEGRAM_POLL_SECONDS = 2
+
+# When reminders fire.
+TELEGRAM_NUDGE_LEAD_MINUTES = 30      # final nudge this long before kickoff
+# The morning digest goes out at/after this local hour (settings.TIME_ZONE),
+# once per day, listing the day's still-open matches the member hasn't predicted.
+TELEGRAM_DIGEST_HOUR = 9
+
+# NotificationLog dedup-key prefixes (one row = one thing already sent).
+class NotifyKind:
+    DIGEST = "DIGEST"   # dedup key: the local date, e.g. "2026-06-14"
+    NUDGE = "NUDGE"     # dedup key: the match id
+
+
+NOTIFY_KIND_LABELS = {
+    NotifyKind.DIGEST: "خلاصهٔ روزانه",
+    NotifyKind.NUDGE: "یادآوری پیش از بازی",
+}
+NOTIFY_KIND_CHOICES = [(k, v) for k, v in NOTIFY_KIND_LABELS.items()]
+
+NOTIFY_KIND_MAX_LENGTH = 8
+NOTIFY_DEDUP_KEY_MAX_LENGTH = 40
+
+# -- Bot replies (sent to the user in the chat) ----------------------------- #
+TG_REPLY_LINKED = (
+    "✅ حساب تلگرام شما با موفقیت به «{name}» متصل شد.\n"
+    "از این پس یادآوری بازی‌هایی که هنوز پیش‌بینی نکرده‌ای را همین‌جا می‌فرستیم."
+)
+TG_REPLY_LINK_INVALID = (
+    "این لینک اتصال نامعتبر یا منقضی شده است. لطفاً از صفحهٔ «پروفایل من» در سایت "
+    "دوباره روی «اتصال به تلگرام» بزن."
+)
+TG_REPLY_START_NO_TOKEN = (
+    "سلام! 👋 برای اتصال حساب، از صفحهٔ «پروفایل من» در سایت روی دکمهٔ "
+    "«اتصال به تلگرام» بزن."
+)
+TG_REPLY_STOPPED = (
+    "🔕 یادآوری‌های تلگرام خاموش شد. هر وقت خواستی از سایت دوباره روشنش کن."
+)
+TG_REPLY_STOP_NOT_LINKED = "این گفتگو به هیچ حسابی متصل نیست."
+
+# -- Reminder messages ------------------------------------------------------ #
+# parse_mode=HTML, so the footer link is a real anchor and team names are escaped.
+TG_DIGEST_TITLE = "🗓 <b>بازی‌های امروز که هنوز پیش‌بینی نکرده‌ای:</b>"
+TG_NUDGE_TITLE = "⏰ <b>کمتر از {minutes} دقیقه تا شروع بازی!</b> هنوز پیش‌بینی نکرده‌ای:"
+# One fixture line. {time} is the local kickoff (HH:MM, Persian digits).
+TG_MATCH_LINE = "• {home} {hflag} - {aflag} {away} — ساعت {time}"
+TG_REMINDER_FOOTER = "همین حالا ثبت کن 👇\n<a href=\"{url}\">{url}</a>"
+
+# Frontend path the reminder links to (cross-league, so the dashboard).
+TELEGRAM_REMINDER_PATH = "/dashboard"
+
+# -- Tick endpoint ---------------------------------------------------------- #
+# The scheduler authenticates with this header (compared to TASK_TRIGGER_KEY).
+TELEGRAM_TASK_KEY_HEADER = "X-Task-Key"
+MSG_TASK_FORBIDDEN = "کلید اجرای زمان‌بندی‌شده نامعتبر است."
+
+# -- Profile API (link status) errors --------------------------------------- #
+ERR_TELEGRAM_NOT_CONFIGURED = "اتصال تلگرام در این سرور پیکربندی نشده است."
+
+# -- Model labels (NotificationLog, TelegramState) -------------------------- #
+V_NOTIFICATION_LOG = "یادآوری ارسال‌شده"
+V_NOTIFICATION_LOG_PLURAL = "یادآوری‌های ارسال‌شده"
+L_NOTIFY_KIND = "نوع"
+L_NOTIFY_DEDUP_KEY = "کلید یکتا"
+L_NOTIFY_SENT_AT = "زمان ارسال"
+V_TELEGRAM_STATE = "وضعیت دریافت تلگرام"
+V_TELEGRAM_STATE_PLURAL = "وضعیت دریافت تلگرام"
+L_TELEGRAM_UPDATE_OFFSET = "آفست به‌روزرسانی‌ها"
+L_TELEGRAM_POLLED_AT = "آخرین دریافت به‌روزرسانی‌ها"
 

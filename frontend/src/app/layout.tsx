@@ -32,6 +32,18 @@ const themeInit = `(function(){try{var s=localStorage.getItem('wc-theme');if(s==
 export default function RootLayout({
   children,
 }: Readonly<{ children: React.ReactNode }>) {
+  // TEMP (recap demo only): render without Clerk so a public, auth-free demo
+  // route can hydrate without a valid Clerk session. Guarded by an env flag —
+  // normal runs (flag unset) are unaffected. Remove with the demo.
+  if (process.env.NEXT_PUBLIC_DEMO_NO_CLERK === "1") {
+    return (
+      <html lang="fa" dir="rtl" className={`${vazir.variable} ${lalezar.variable}`} suppressHydrationWarning>
+        <body>
+          <main className="container main">{children}</main>
+        </body>
+      </html>
+    );
+  }
   return (
     <ClerkProvider
       localization={faIR}

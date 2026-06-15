@@ -223,6 +223,16 @@ export interface Profile {
   joined_at: string;
 }
 
+// The signed-in user's Telegram reminder link (see TelegramConnect).
+// `deep_link` is the t.me/<bot>?start=<token> URL, present only while unlinked
+// and only when a bot is configured on the server (`configured`).
+export interface TelegramStatus {
+  configured: boolean;
+  linked: boolean;
+  notify: boolean;
+  deep_link: string | null;
+}
+
 export interface PlayerCard {
   id: number;
   public_name: string;
@@ -243,6 +253,86 @@ export interface PlayerDetail {
   is_me: boolean;
   stats: { leagues: number; predictions: number };
   shared_leagues: SharedLeague[];
+}
+
+// ----- Matchday recap (the animated end-of-day story) ----------------------
+// A compact fixture card (no per-viewer prediction fields).
+export interface RecapMatchMini {
+  id: number;
+  stage: string;
+  stage_label: string;
+  kickoff: string;
+  home_team: TeamT | null;
+  away_team: TeamT | null;
+  home_label: string | null;
+  away_label: string | null;
+  home_score: number | null;
+  away_score: number | null;
+}
+
+export interface RecapDayMatch extends RecapMatchMini {
+  predicted_count: number;
+}
+
+// One member's standout prediction: the fixture, their pick, and the payoff.
+export interface RecapCall {
+  match: RecapMatchMini;
+  prediction: { home: number; away: number };
+  points: number;
+  tier: string;
+  tier_label: string | null;
+}
+
+export interface RecapPlayer {
+  id: number;
+  name: string;
+  avatar: string | null;
+  is_me: boolean;
+}
+
+export interface RecapMe {
+  participated: boolean;
+  predicted: number;
+  total: number;
+  points: number;
+  hits: {
+    exact: number;
+    diff: number;
+    winner: number;
+    participation: number;
+    missed: number;
+  };
+  best_call: RecapCall | null;
+  rank_before: number;
+  rank_after: number;
+  // Positive = climbed the table across the day.
+  rank_delta: number;
+  total_before: number;
+  total_after: number;
+  is_top_scorer: boolean;
+  day_avg: number;
+}
+
+export interface RecapGeneral {
+  top_scorer: (RecapPlayer & { points: number; ties: number }) | null;
+  best_call: (RecapPlayer & RecapCall & { also_count: number }) | null;
+  surprise: {
+    match: RecapMatchMini;
+    correct_count: number;
+    predicted_count: number;
+  } | null;
+  mover: (RecapPlayer & { from_rank: number; to_rank: number; delta: number }) | null;
+  podium: (RecapPlayer & { rank: number; total: number })[];
+}
+
+export interface RecapResp {
+  // ISO date (YYYY-MM-DD) of the recapped matchday, or null when nothing has
+  // finished yet. `available_dates` is ascending for prev/next-day navigation.
+  date: string | null;
+  available_dates: string[];
+  matches: RecapDayMatch[];
+  me: RecapMe | null;
+  general: RecapGeneral | null;
 }
 
 export interface MemberRow {

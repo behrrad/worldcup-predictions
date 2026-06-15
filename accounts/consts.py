@@ -33,6 +33,15 @@ AVATAR_CONTENT_TYPES = ("image/jpeg", "image/png", "image/webp", "image/gif")
 AVATAR_EXTENSIONS = (".jpg", ".jpeg", ".png", ".webp", ".gif")
 AVATAR_DEFAULT_EXTENSION = ".jpg"
 
+# Telegram link (one-tap reminders bot — see predictions/telegram.py)
+LABEL_TELEGRAM_CHAT_ID = "شناسهٔ گفتگوی تلگرام"
+LABEL_TELEGRAM_NOTIFY = "یادآوری تلگرام فعال"
+LABEL_TELEGRAM_LINK_TOKEN = "توکن اتصال تلگرام"
+LABEL_TELEGRAM_LINK_TOKEN_AT = "زمان صدور توکن اتصال"
+# Max length for a stored Telegram @username (Telegram caps usernames at 32).
+TELEGRAM_USERNAME_MAX_LENGTH = 32
+TELEGRAM_LINK_TOKEN_MAX_LENGTH = 64
+
 # Verbose names
 VERBOSE_USER = "کاربر"
 VERBOSE_USER_PLURAL = "کاربران"

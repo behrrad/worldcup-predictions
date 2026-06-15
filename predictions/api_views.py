@@ -20,7 +20,7 @@ from rest_framework.permissions import AllowAny
 from rest_framework.response import Response
 
 from accounts import consts as acc_consts
-from . import consts, export, live, results_sync, scoring
+from . import consts, export, live, recap, results_sync, scoring, telegram
 from .models import (
     Competition,
     League,
@@ -201,6 +201,44 @@ def _get_membership(request, slug):
         raise NotFound(consts.MSG_NOT_A_MEMBER)
 
 
+# -- matchday recap serialization (rich objects from recap.py -> JSON) -------- #
+def _recap_player(membership, request):
+    user = membership.user
+    return {
+        "id": user.id,
+        "name": user.public_name,
+        "avatar": _avatar_url(user, request),
+        "is_me": user.id == request.user.id,
+    }
+
+
+def _recap_match_mini(match):
+    """A compact match card for the recap (no per-viewer prediction fields)."""
+    return {
+        "id": match.id,
+        "stage": match.stage,
+        "stage_label": consts.STAGE_LABELS.get(match.stage),
+        "kickoff": match.kickoff.isoformat(),
+        "home_team": _team(match.home_team),
+        "away_team": _team(match.away_team),
+        "home_label": consts.bracket_label_fa(match.home_label) if not match.home_team_id else None,
+        "away_label": consts.bracket_label_fa(match.away_label) if not match.away_team_id else None,
+        "home_score": match.home_score,
+        "away_score": match.away_score,
+    }
+
+
+def _recap_call(score, match, prediction):
+    """One member's standout prediction: the fixture, their pick, and the payoff."""
+    return {
+        "match": _recap_match_mini(match),
+        "prediction": {"home": prediction.predicted_home, "away": prediction.predicted_away},
+        "points": float(score.points),
+        "tier": score.tier,
+        "tier_label": consts.TIER_LABELS.get(score.tier),
+    }
+
+
 # --------------------------------------------------------------------------- #
 # Endpoints
 # --------------------------------------------------------------------------- #
@@ -289,6 +327,60 @@ def my_avatar(request):
         user.avatar.delete(save=False)
     user.avatar.save(filename, upload, save=True)
     return Response(_profile(user, request))
+
+
+def _telegram_status(user, request):
+    """The signed-in user's Telegram link state for the connect UI. The deep
+    link is only handed out while unlinked (and only when a bot is configured)."""
+    linked = user.telegram_chat_id is not None
+    return {
+        "configured": telegram.is_configured(),
+        "linked": linked,
+        "notify": user.telegram_notify,
+        "deep_link": None if linked else telegram.deep_link(user),
+    }
+
+
+@api_view(["GET", "PATCH"])
+def me_telegram(request):
+    """Read or update the signed-in user's Telegram link.
+
+    GET also drains pending bot updates (a cheap no-op when nothing is waiting),
+    so the connect page can poll this endpoint and see the link complete within
+    a couple of seconds of the user tapping Start — no webhook needed.
+    PATCH toggles `notify` or unlinks (`{"unlink": true}`)."""
+    user = request.user
+    if request.method == "PATCH":
+        if _as_bool(request.data.get("unlink")):
+            user.telegram_chat_id = None
+            user.telegram_link_token = ""
+            user.telegram_link_token_at = None
+            user.save(update_fields=[
+                "telegram_chat_id", "telegram_link_token", "telegram_link_token_at",
+            ])
+        elif "notify" in request.data:
+            user.telegram_notify = _as_bool(request.data.get("notify"))
+            user.save(update_fields=["telegram_notify"])
+    else:
+        # A just-tapped "Start" lands here via the poll; pick up the new chat id.
+        telegram.poll_updates()
+        user.refresh_from_db()
+    return Response(_telegram_status(user, request))
+
+
+@api_view(["POST"])
+@authentication_classes([])      # called by the scheduler, not a signed-in user
+@permission_classes([AllowAny])
+def task_tick(request):
+    """Periodic job trigger (GitHub Actions cron): pulls bot updates, refreshes
+    live scores, finalizes due results, and sends due reminders. Gated by the
+    secret TASK_TRIGGER_KEY (sent in the X-Task-Key header); disabled — 403 —
+    when that key isn't configured, so it can never be triggered anonymously."""
+    key = (settings.TASK_TRIGGER_KEY or "").strip()
+    provided = request.headers.get(consts.TELEGRAM_TASK_KEY_HEADER, "")
+    if not key or not secrets.compare_digest(provided, key):
+        raise PermissionDenied(consts.MSG_TASK_FORBIDDEN)
+    return Response(telegram.run_tick(timezone.now()))
 
 
 @api_view(["GET"])
@@ -495,6 +587,88 @@ def league_leaderboard(request, slug):
             }
             for row in rows
         ],
+    })
+
+
+@api_view(["GET"])
+def league_recap(request, slug):
+    """The animated end-of-day "story" for one matchday in a league.
+
+    `?date=YYYY-MM-DD` picks the matchday (defaults to the latest finished day).
+    Returns the day's results, the viewer's personal summary, and the league-wide
+    superlatives — all computed in recap.py; here we just shape it into JSON."""
+    membership = _get_membership(request, slug)
+    data = recap.build_recap(membership.league, membership, request.query_params.get("date"))
+
+    me = data["me"]
+    if me is not None:
+        best = me["best"]
+        me = {
+            "participated": me["participated"],
+            "predicted": me["predicted"],
+            "total": me["total"],
+            "points": float(me["points"]),
+            "hits": {
+                "exact": me["hits"][consts.Tier.EXACT],
+                "diff": me["hits"][consts.Tier.DIFF],
+                "winner": me["hits"][consts.Tier.WINNER],
+                "participation": me["hits"][consts.Tier.PARTICIPATION],
+                "missed": me["hits"][consts.Tier.NONE],
+            },
+            "best_call": _recap_call(*best) if best else None,
+            "rank_before": me["rank_before"],
+            "rank_after": me["rank_after"],
+            "rank_delta": me["rank_delta"],
+            "total_before": float(me["total_before"]),
+            "total_after": float(me["total_after"]),
+            "is_top_scorer": me["is_top_scorer"],
+            "day_avg": round(float(me["day_avg"]), 1),
+        }
+
+    general = data["general"]
+    if general is not None:
+        ts, bc, sp, mv = (general["top_scorer"], general["best_call"],
+                          general["surprise"], general["mover"])
+        general = {
+            "top_scorer": (
+                {**_recap_player(ts["membership"], request),
+                 "points": float(ts["points"]), "ties": ts["ties"]}
+                if ts else None
+            ),
+            "best_call": (
+                {**_recap_player(bc["membership"], request),
+                 **_recap_call(bc["score"], bc["match"], bc["prediction"]),
+                 "also_count": bc["also_count"]}
+                if bc else None
+            ),
+            "surprise": (
+                {"match": _recap_match_mini(sp["match"]),
+                 "correct_count": sp["correct_count"],
+                 "predicted_count": sp["predicted_count"]}
+                if sp else None
+            ),
+            "mover": (
+                {**_recap_player(mv["membership"], request),
+                 "from_rank": mv["from_rank"], "to_rank": mv["to_rank"],
+                 "delta": mv["delta"]}
+                if mv else None
+            ),
+            "podium": [
+                {**_recap_player(p["membership"], request),
+                 "rank": p["rank"], "total": float(p["total"])}
+                for p in general["podium"]
+            ],
+        }
+
+    return Response({
+        "date": data["date"],
+        "available_dates": data["available_dates"],
+        "matches": [
+            {**_recap_match_mini(item["match"]), "predicted_count": item["predicted_count"]}
+            for item in data["matches"]
+        ],
+        "me": me,
+        "general": general,
     })
 
 
