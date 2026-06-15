@@ -458,13 +458,14 @@ class TelegramEndpointTests(TestCase):
         self.assertFalse(self.user.telegram_notify)
 
     def test_patch_toggles_notify_matches(self):
+        self.assertTrue(self.user.telegram_notify_matches)  # on by default
         res = self.client.patch(
-            reverse("api_me_telegram"), {"notify_matches": True}, format="json",
+            reverse("api_me_telegram"), {"notify_matches": False}, format="json",
         )
         self.assertEqual(res.status_code, 200)
         self.user.refresh_from_db()
-        self.assertTrue(self.user.telegram_notify_matches)  # default was off
-        self.assertTrue(res.json()["notify_matches"])
+        self.assertFalse(self.user.telegram_notify_matches)
+        self.assertFalse(res.json()["notify_matches"])
 
     def test_patch_applies_both_toggles_in_one_request(self):
         res = self.client.patch(

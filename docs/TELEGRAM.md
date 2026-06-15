@@ -1,14 +1,16 @@
 # Telegram reminders & match events
 
-The bot DMs members two distinct (independently opt-in) streams:
+The bot DMs members two distinct (independently toggled) streams, both **on by
+default** once a member links — each switchable off on the profile page:
 
 1. **Prediction reminders** — a once-a-day **morning digest** of the day's
    still-open matches, plus a final **nudge** shortly before kickoff, to members
-   who haven't predicted yet (`telegram_notify`, on by default).
+   who haven't predicted yet (`telegram_notify`).
 2. **Live match events** — **kickoff**, **goals**, **half-time** and
    **full-time** for matches as they happen, personalized with the member's own
-   prediction and the points they earned (`telegram_notify_matches`, **off by
-   default** — far higher volume, so it's strictly opt-in).
+   prediction and the points they earned (`telegram_notify_matches`). Far higher
+   volume than the reminders, so it's the first thing to turn off if it's too
+   chatty.
 
 Both are built to the same philosophy as the live/results pipelines: **env-gated**
 (no token ⇒ silent no-op), **no cron/worker** of our own, **atomic-claim**
