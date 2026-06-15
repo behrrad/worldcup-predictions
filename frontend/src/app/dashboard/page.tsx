@@ -5,6 +5,7 @@ import { serverFetch } from "@/lib/server";
 import { fa } from "@/lib/format";
 import JoinLeague from "@/components/JoinLeague";
 import LiveScores from "@/components/LiveScores";
+import TelegramConnect from "@/components/TelegramConnect";
 import type { LeagueCard, CompetitionT, MeT } from "@/lib/types";
 
 export default async function Dashboard() {
@@ -26,6 +27,8 @@ export default async function Dashboard() {
       </div>
 
       <LiveScores />
+
+      <TelegramConnect variant="banner" />
 
       {me.is_admin && (
         <Link className="card tile" href="/admin/results">
