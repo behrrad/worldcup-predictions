@@ -1,5 +1,6 @@
 import { serverFetch } from "@/lib/server";
 import ProfileForm from "@/components/ProfileForm";
+import TelegramConnect from "@/components/TelegramConnect";
 import type { Profile, TeamT } from "@/lib/types";
 
 export default async function ProfilePage() {
@@ -17,6 +18,7 @@ export default async function ProfilePage() {
       <div className="card">
         <ProfileForm initial={profile} teams={teams} />
       </div>
+      <TelegramConnect />
     </>
   );
 }

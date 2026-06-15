@@ -34,6 +34,23 @@ class User(AbstractUser):
         related_name="fans", verbose_name=consts.LABEL_FAVORITE_TEAM,
     )
 
+    # -- Telegram reminders ------------------------------------------------ #
+    # Set once the user links their Telegram account (one-tap; see
+    # predictions/telegram.py). When set + telegram_notify, the bot DMs them
+    # reminders for matches they haven't predicted. telegram_link_token is the
+    # short single-use token the website hands out via the bot deep link.
+    telegram_chat_id = models.BigIntegerField(
+        consts.LABEL_TELEGRAM_CHAT_ID, null=True, blank=True, unique=True,
+    )
+    telegram_notify = models.BooleanField(consts.LABEL_TELEGRAM_NOTIFY, default=True)
+    telegram_link_token = models.CharField(
+        consts.LABEL_TELEGRAM_LINK_TOKEN,
+        max_length=consts.TELEGRAM_LINK_TOKEN_MAX_LENGTH, blank=True, db_index=True,
+    )
+    telegram_link_token_at = models.DateTimeField(
+        consts.LABEL_TELEGRAM_LINK_TOKEN_AT, null=True, blank=True,
+    )
+
     USERNAME_FIELD = "email"
     REQUIRED_FIELDS = []  # email & password are required by default
 

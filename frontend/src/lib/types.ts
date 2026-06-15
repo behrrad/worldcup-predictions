@@ -223,6 +223,16 @@ export interface Profile {
   joined_at: string;
 }
 
+// The signed-in user's Telegram reminder link (see TelegramConnect).
+// `deep_link` is the t.me/<bot>?start=<token> URL, present only while unlinked
+// and only when a bot is configured on the server (`configured`).
+export interface TelegramStatus {
+  configured: boolean;
+  linked: boolean;
+  notify: boolean;
+  deep_link: string | null;
+}
+
 export interface PlayerCard {
   id: number;
   public_name: string;

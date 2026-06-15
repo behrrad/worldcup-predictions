@@ -7,12 +7,17 @@ from . import api_views
 urlpatterns = [
     path("me/", api_views.me, name="api_me"),
     path("me/avatar/", api_views.my_avatar, name="api_my_avatar"),
+    # Telegram reminders: link status / connect deep link / notify toggle.
+    path("me/telegram/", api_views.me_telegram, name="api_me_telegram"),
     path("teams/", api_views.teams, name="api_teams"),
     path("players/", api_views.players, name="api_players"),
     path("players/<int:user_id>/", api_views.player_detail, name="api_player_detail"),
     path("competitions/", api_views.competitions, name="api_competitions"),
     # In-play scores (display only; lazily refreshed from the live provider).
     path("live/", api_views.live_scores, name="api_live_scores"),
+    # Periodic job trigger (scheduler/cron): reminders + live + finalize.
+    # Secret-gated inside the view (X-Task-Key); no Clerk auth.
+    path("tasks/tick/", api_views.task_tick, name="api_task_tick"),
     path("leagues/", api_views.leagues, name="api_leagues"),
     path("leagues/join/", api_views.join_league, name="api_join_league"),
     path("leagues/<str:slug>/", api_views.league_detail, name="api_league_detail"),

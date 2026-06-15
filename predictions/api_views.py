@@ -20,7 +20,7 @@ from rest_framework.permissions import AllowAny
 from rest_framework.response import Response
 
 from accounts import consts as acc_consts
-from . import consts, export, live, results_sync, scoring
+from . import consts, export, live, results_sync, scoring, telegram
 from .models import (
     Competition,
     League,
@@ -289,6 +289,60 @@ def my_avatar(request):
         user.avatar.delete(save=False)
     user.avatar.save(filename, upload, save=True)
     return Response(_profile(user, request))
+
+
+def _telegram_status(user, request):
+    """The signed-in user's Telegram link state for the connect UI. The deep
+    link is only handed out while unlinked (and only when a bot is configured)."""
+    linked = user.telegram_chat_id is not None
+    return {
+        "configured": telegram.is_configured(),
+        "linked": linked,
+        "notify": user.telegram_notify,
+        "deep_link": None if linked else telegram.deep_link(user),
+    }
+
+
+@api_view(["GET", "PATCH"])
+def me_telegram(request):
+    """Read or update the signed-in user's Telegram link.
+
+    GET also drains pending bot updates (a cheap no-op when nothing is waiting),
+    so the connect page can poll this endpoint and see the link complete within
+    a couple of seconds of the user tapping Start — no webhook needed.
+    PATCH toggles `notify` or unlinks (`{"unlink": true}`)."""
+    user = request.user
+    if request.method == "PATCH":
+        if _as_bool(request.data.get("unlink")):
+            user.telegram_chat_id = None
+            user.telegram_link_token = ""
+            user.telegram_link_token_at = None
+            user.save(update_fields=[
+                "telegram_chat_id", "telegram_link_token", "telegram_link_token_at",
+            ])
+        elif "notify" in request.data:
+            user.telegram_notify = _as_bool(request.data.get("notify"))
+            user.save(update_fields=["telegram_notify"])
+    else:
+        # A just-tapped "Start" lands here via the poll; pick up the new chat id.
+        telegram.poll_updates()
+        user.refresh_from_db()
+    return Response(_telegram_status(user, request))
+
+
+@api_view(["POST"])
+@authentication_classes([])      # called by the scheduler, not a signed-in user
+@permission_classes([AllowAny])
+def task_tick(request):
+    """Periodic job trigger (GitHub Actions cron): pulls bot updates, refreshes
+    live scores, finalizes due results, and sends due reminders. Gated by the
+    secret TASK_TRIGGER_KEY (sent in the X-Task-Key header); disabled — 403 —
+    when that key isn't configured, so it can never be triggered anonymously."""
+    key = (settings.TASK_TRIGGER_KEY or "").strip()
+    provided = request.headers.get(consts.TELEGRAM_TASK_KEY_HEADER, "")
+    if not key or not secrets.compare_digest(provided, key):
+        raise PermissionDenied(consts.MSG_TASK_FORBIDDEN)
+    return Response(telegram.run_tick(timezone.now()))
 
 
 @api_view(["GET"])

@@ -218,6 +218,19 @@ FRONTEND_URL = os.environ.get("FRONTEND_URL", "http://localhost:3077").rstrip("/
 
 
 # --------------------------------------------------------------------------- #
+# Telegram reminders (predictions/telegram.py)
+# --------------------------------------------------------------------------- #
+# All three are optional: with no bot token configured, every Telegram send and
+# poll is a silent no-op (so the feature ships dark until the bot is created).
+# TASK_TRIGGER_KEY gates the periodic /api/tasks/tick/ endpoint the scheduler
+# hits; when it's empty the endpoint is disabled (returns 403) so it can't be
+# triggered anonymously.
+TELEGRAM_BOT_TOKEN = os.environ.get(consts.TELEGRAM_BOT_TOKEN_ENV, "")
+TELEGRAM_BOT_USERNAME = os.environ.get(consts.TELEGRAM_BOT_USERNAME_ENV, "").lstrip("@")
+TASK_TRIGGER_KEY = os.environ.get(consts.TASK_TRIGGER_KEY_ENV, "")
+
+
+# --------------------------------------------------------------------------- #
 # Internationalization — Persian / RTL
 # --------------------------------------------------------------------------- #
 LANGUAGE_CODE = "fa-ir"

@@ -1,0 +1,42 @@
+# Periodic "tick" that drives Telegram reminders (and, as a bonus, live-score
+# refresh + official-result finalization) without us running a cron/worker on
+# the free hosting. It just POSTs the secret-gated tick endpoint; all the logic
+# lives in the Django app (predictions/telegram.py -> run_tick).
+#
+# Required repository secrets (Settings -> Secrets and variables -> Actions):
+#   TICK_URL          e.g. https://worldcup-api-m9gy.onrender.com/api/tasks/tick/
+#   TASK_TRIGGER_KEY  must equal the TASK_TRIGGER_KEY env var set on the backend
+#
+# Notes:
+# - GitHub schedules can lag a few minutes under load and are disabled after
+#   ~60 days of repo inactivity — fine during an active tournament.
+# - The first request may take ~50s while Render's free instance cold-starts.
+name: telegram-tick
+
+on:
+  schedule:
+    - cron: "*/10 * * * *" # every 10 minutes (UTC)
+  workflow_dispatch: {} # allow manual runs from the Actions tab
+
+# If a slow cold-start run overruns the next slot, don't pile up.
+concurrency:
+  group: telegram-tick
+  cancel-in-progress: false
+
+jobs:
+  tick:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Trigger reminder tick
+        env:
+          TICK_URL: ${{ secrets.TICK_URL }}
+          TASK_TRIGGER_KEY: ${{ secrets.TASK_TRIGGER_KEY }}
+        run: |
+          if [ -z "$TICK_URL" ] || [ -z "$TASK_TRIGGER_KEY" ]; then
+            echo "TICK_URL / TASK_TRIGGER_KEY secrets are not set; skipping."
+            exit 0
+          fi
+          curl -fsS --max-time 120 -X POST \
+            -H "X-Task-Key: $TASK_TRIGGER_KEY" \
+            "$TICK_URL"
