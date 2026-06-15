@@ -299,6 +299,7 @@ def _telegram_status(user, request):
         "configured": telegram.is_configured(),
         "linked": linked,
         "notify": user.telegram_notify,
+        "notify_matches": user.telegram_notify_matches,
         "deep_link": None if linked else telegram.deep_link(user),
     }
 
@@ -310,7 +311,8 @@ def me_telegram(request):
     GET also drains pending bot updates (a cheap no-op when nothing is waiting),
     so the connect page can poll this endpoint and see the link complete within
     a couple of seconds of the user tapping Start — no webhook needed.
-    PATCH toggles `notify` or unlinks (`{"unlink": true}`)."""
+    PATCH toggles `notify` (reminders) or `notify_matches` (live match-event
+    DMs), or unlinks (`{"unlink": true}`)."""
     user = request.user
     if request.method == "PATCH":
         if _as_bool(request.data.get("unlink")):
@@ -320,9 +322,18 @@ def me_telegram(request):
             user.save(update_fields=[
                 "telegram_chat_id", "telegram_link_token", "telegram_link_token_at",
             ])
-        elif "notify" in request.data:
-            user.telegram_notify = _as_bool(request.data.get("notify"))
-            user.save(update_fields=["telegram_notify"])
+        else:
+            # Both toggles are independent — apply every one the request carries
+            # (a single PATCH may set notify and notify_matches together).
+            changed = []
+            if "notify" in request.data:
+                user.telegram_notify = _as_bool(request.data.get("notify"))
+                changed.append("telegram_notify")
+            if "notify_matches" in request.data:
+                user.telegram_notify_matches = _as_bool(request.data.get("notify_matches"))
+                changed.append("telegram_notify_matches")
+            if changed:
+                user.save(update_fields=changed)
     else:
         # A just-tapped "Start" lands here via the poll; pick up the new chat id.
         telegram.poll_updates()

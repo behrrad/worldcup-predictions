@@ -43,6 +43,12 @@ class User(AbstractUser):
         consts.LABEL_TELEGRAM_CHAT_ID, null=True, blank=True, unique=True,
     )
     telegram_notify = models.BooleanField(consts.LABEL_TELEGRAM_NOTIFY, default=True)
+    # A second, separate opt-in for live match-event DMs (kickoff, goals,
+    # half-time, full-time). These are far higher-volume than the prediction
+    # reminders above, so they default OFF — the member turns them on explicitly.
+    telegram_notify_matches = models.BooleanField(
+        consts.LABEL_TELEGRAM_NOTIFY_MATCHES, default=False,
+    )
     telegram_link_token = models.CharField(
         consts.LABEL_TELEGRAM_LINK_TOKEN,
         max_length=consts.TELEGRAM_LINK_TOKEN_MAX_LENGTH, blank=True, db_index=True,

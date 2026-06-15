@@ -668,19 +668,44 @@ TELEGRAM_NUDGE_LEAD_MINUTES = 30      # final nudge this long before kickoff
 TELEGRAM_DIGEST_HOUR = 9
 
 # NotificationLog dedup-key prefixes (one row = one thing already sent).
+# The first two are the prediction reminders; the rest are the live match-event
+# DMs (telegram.run_match_events), each fired at most once per (user, kind, key).
 class NotifyKind:
-    DIGEST = "DIGEST"   # dedup key: the local date, e.g. "2026-06-14"
-    NUDGE = "NUDGE"     # dedup key: the match id
+    DIGEST = "DIGEST"       # dedup key: the local date, e.g. "2026-06-14"
+    NUDGE = "NUDGE"         # dedup key: the match id
+    KICKOFF = "KICKOFF"     # dedup key: the match id
+    GOAL = "GOAL"           # dedup key: "<match id>:<home>-<away>" (one per scoreline)
+    HALFTIME = "HALFTIME"   # dedup key: the match id
+    FULLTIME = "FULLTIME"   # dedup key: the match id
 
 
 NOTIFY_KIND_LABELS = {
     NotifyKind.DIGEST: "خلاصهٔ روزانه",
     NotifyKind.NUDGE: "یادآوری پیش از بازی",
+    NotifyKind.KICKOFF: "شروع بازی",
+    NotifyKind.GOAL: "گل",
+    NotifyKind.HALFTIME: "پایان نیمهٔ اول",
+    NotifyKind.FULLTIME: "پایان بازی",
 }
 NOTIFY_KIND_CHOICES = [(k, v) for k, v in NOTIFY_KIND_LABELS.items()]
 
+# Live match-event kinds, in the order events are emitted within one tick.
+NOTIFY_MATCH_EVENT_KINDS = (
+    NotifyKind.KICKOFF, NotifyKind.GOAL, NotifyKind.HALFTIME, NotifyKind.FULLTIME,
+)
+
 NOTIFY_KIND_MAX_LENGTH = 8
 NOTIFY_DEDUP_KEY_MAX_LENGTH = 40
+# A goal dedup key carries the scoreline: "<match id>:<home>-<away>".
+NOTIFY_GOAL_KEY = "{match_id}:{home}-{away}"
+# Only emit live match-event DMs for matches whose kickoff is within this many
+# hours of now (so newly opted-in members aren't spammed with older matches, and
+# the FULL_TIME catch-up window stays bounded).
+TELEGRAM_EVENT_WINDOW_HOURS = 4
+# A "kickoff" DM only fires this soon after the real kickoff — long enough for the
+# next cron tick to catch it, short enough that a late opt-in / late live feed
+# doesn't get a stale "kickoff!" for a match already well underway.
+TELEGRAM_KICKOFF_GRACE_MINUTES = 20
 
 # -- Bot replies (sent to the user in the chat) ----------------------------- #
 TG_REPLY_LINKED = (
@@ -710,6 +735,29 @@ TG_REMINDER_FOOTER = "همین حالا ثبت کن 👇\n<a href=\"{url}\">{url
 
 # Frontend path the reminder links to (cross-league, so the dashboard).
 TELEGRAM_REMINDER_PATH = "/dashboard"
+
+# -- Live match-event messages (telegram.run_match_events) ------------------- #
+# Each DM is a title line, a fixture/score line, then a personalized line built
+# from the member's own prediction(s). parse_mode=HTML, so team names are escaped.
+TG_EVENT_KICKOFF_TITLE = "🟢 <b>سوت شروع شد!</b>"
+# {clock} is " (دقیقهٔ X)" when a live minute is known, else empty.
+TG_EVENT_GOAL_TITLE = "⚽️ <b>گُل!</b>{clock}"
+TG_EVENT_HALFTIME_TITLE = "⏸ <b>پایان نیمهٔ اول</b>"
+TG_EVENT_FULLTIME_TITLE = "🏁 <b>پایان بازی</b>"
+# Fixture line without a score (kickoff) and with one (goal/HT/FT).
+TG_EVENT_FIXTURE_LINE = "{hflag} {home} - {away} {aflag}"
+TG_EVENT_SCORE_LINE = "{hflag} {home} <b>{hs} - {as}</b> {away} {aflag}"
+# How a live minute is rendered into {clock} above (Persian digits supplied).
+TG_EVENT_GOAL_CLOCK = " (دقیقهٔ {minute})"
+# Personalized lines (omitted entirely when the member didn't predict).
+TG_EVENT_YOUR_PICK = "پیش‌بینی تو: <b>{picks}</b>"
+TG_EVENT_PICK_JOIN = "، "           # joins distinct picks across the member's leagues
+TG_EVENT_ON_TRACK = "✅ تا اینجا دقیقاً مطابق پیش‌بینی‌ات!"
+TG_EVENT_POINTS = "🎯 از این بازی <b>{points}</b> امتیاز گرفتی!"
+TG_EVENT_POINTS_NONE = "این بار امتیازی به دست نیاوردی."
+TG_EVENT_NO_PICK = "این بازی را پیش‌بینی نکرده بودی."
+# A single predicted scoreline, Persian digits (e.g. «۲-۱»).
+TG_EVENT_PICK = "{home}-{away}"
 
 # -- Tick endpoint ---------------------------------------------------------- #
 # The scheduler authenticates with this header (compared to TASK_TRIGGER_KEY).
