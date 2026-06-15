@@ -230,6 +230,8 @@ export interface TelegramStatus {
   configured: boolean;
   linked: boolean;
   notify: boolean;
+  // Separate opt-in for live match-event DMs (kickoff, goals, half-time, full-time).
+  notify_matches: boolean;
   deep_link: string | null;
 }
 

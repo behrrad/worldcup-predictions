@@ -257,6 +257,16 @@ def poll_updates(now=None) -> int:
 # --------------------------------------------------------------------------- #
 # Reminders — who still owes a prediction
 # --------------------------------------------------------------------------- #
+def _linked_users(notify_field: str):
+    """Linked, active users opted into a given DM stream. `notify_field` selects
+    the opt-in: `telegram_notify` (reminders) or `telegram_notify_matches`
+    (match events) — keeping "who is reachable" defined in one place."""
+    User = get_user_model()
+    return User.objects.filter(
+        telegram_chat_id__isnull=False, is_active=True, **{notify_field: True},
+    )
+
+
 def _needing(candidate_matches, now):
     """For each linked, opted-in user, the subset of candidate_matches they can
     still predict in at least one of their leagues but haven't. Returns a list
@@ -267,10 +277,7 @@ def _needing(candidate_matches, now):
     if not candidate_matches:
         return []
 
-    User = get_user_model()
-    recipients = list(User.objects.filter(
-        telegram_chat_id__isnull=False, telegram_notify=True, is_active=True,
-    ))
+    recipients = list(_linked_users("telegram_notify"))
     if not recipients:
         return []
 
@@ -308,8 +315,10 @@ def _needing(candidate_matches, now):
     return out
 
 
-def _predictable_matches(now):
-    """Base queryset for reminders: scheduled, both teams known, active comp."""
+def _fixtures_base():
+    """Both teams known, active competition, ready to render (teams/competition
+    preselected, ordered by kickoff). The shared base for the reminder and
+    match-event match queries, which each add their own time/status filter."""
     from .models import Match
 
     return (
@@ -318,10 +327,14 @@ def _predictable_matches(now):
             home_team__isnull=False,
             away_team__isnull=False,
         )
-        .exclude(status=consts.MatchStatus.FINISHED)
         .select_related("home_team", "away_team", "competition")
         .order_by("kickoff")
     )
+
+
+def _predictable_matches(now):
+    """Base queryset for reminders: scheduled, both teams known, active comp."""
+    return _fixtures_base().exclude(status=consts.MatchStatus.FINISHED)
 
 
 def due_digests(now):
@@ -346,13 +359,20 @@ def due_nudges(now):
 # --------------------------------------------------------------------------- #
 # Message rendering
 # --------------------------------------------------------------------------- #
+def _sides(match):
+    """(home name+flag, away name+flag), names HTML-escaped — the shared bits
+    every fixture/scoreline render needs."""
+    return (
+        _esc(match.home_team.name_fa), match.home_team.flag_emoji or "",
+        _esc(match.away_team.name_fa), match.away_team.flag_emoji or "",
+    )
+
+
 def _match_line(match) -> str:
     local = timezone.localtime(match.kickoff)
+    home, hflag, away, aflag = _sides(match)
     return consts.TG_MATCH_LINE.format(
-        home=_esc(match.home_team.name_fa),
-        hflag=match.home_team.flag_emoji or "",
-        away=_esc(match.away_team.name_fa),
-        aflag=match.away_team.flag_emoji or "",
+        home=home, hflag=hflag, away=away, aflag=aflag,
         time=consts.to_fa_digits(local.strftime("%H:%M")),
     )
 
@@ -428,17 +448,241 @@ def run_notifications(now=None) -> dict:
     return sent
 
 
+# --------------------------------------------------------------------------- #
+# Live match events — kickoff / goals / half-time / full-time
+# --------------------------------------------------------------------------- #
+# A second, opt-in DM stream (User.telegram_notify_matches) that narrates a match
+# as it happens, personalized with the member's own prediction. State comes from
+# the live_* fields (refreshed earlier in the same tick) plus the official result;
+# idempotency is the same NotificationLog (user, kind, dedup_key) guard as the
+# reminders — every event fires at most once per recipient. Because the live feed
+# is sampled per tick (not per second), goal alerts are best-effort: a flurry of
+# goals between two ticks collapses into the latest scoreline. Kickoff and
+# full-time are robust (they also fire from the schedule / official result).
+def _match_event_recipients():
+    """Linked, active members who opted into match-event DMs (a separate switch
+    from the reminder opt-in)."""
+    return list(_linked_users("telegram_notify_matches"))
+
+
+def _event_window_matches(now):
+    """Matches worth narrating right now: both teams known, in an active comp,
+    and either already kicked off or carrying live state — bounded to a recent
+    window so a fresh opt-in isn't flooded with older matches."""
+    cutoff = now - timedelta(hours=consts.TELEGRAM_EVENT_WINDOW_HOURS)
+    return list(
+        _fixtures_base()
+        .filter(kickoff__gte=cutoff)
+        .filter(Q(kickoff__lte=now) | ~Q(live_status=consts.LiveStatus.NONE))
+    )
+
+
+def _events_for(match, now):
+    """The match-event entries this match currently warrants, each a dict with a
+    `kind`, a dedup `key`, the rendering `phase`, and the score it carries. The
+    NotificationLog guard downstream makes each one fire at most once."""
+    live = match.live_status
+    has_live_score = (
+        match.live_home_score is not None and match.live_away_score is not None
+    )
+    over_official = match.is_finished
+    # Only treat a live "full time" as over when it actually carries a scoreline:
+    # a FT status with NULL scores (a partial/stale live row) would otherwise feed
+    # None into the scorer at full time and crash the whole tick.
+    over_live = live == consts.LiveStatus.FULL_TIME and has_live_score
+    over = over_official or over_live
+    since_kickoff = now - match.kickoff
+    events = []
+
+    # Kickoff: only just after the real kickoff (not for a match discovered
+    # mid-play by a late opt-in/feed) and only while it isn't already over.
+    if not over and timedelta() <= since_kickoff <= timedelta(
+        minutes=consts.TELEGRAM_KICKOFF_GRACE_MINUTES
+    ):
+        events.append({
+            "kind": consts.NotifyKind.KICKOFF, "key": str(match.id),
+            "phase": consts.NotifyKind.KICKOFF, "hs": None, "as": None,
+        })
+
+    # Goal: a changed in-play scoreline with at least one goal on the board. Only
+    # while the ball is in play (a match first seen at half-time announces the
+    # score through the half-time event, not a phantom "goal").
+    if live == consts.LiveStatus.LIVE and has_live_score \
+            and match.live_home_score + match.live_away_score > 0:
+        events.append({
+            "kind": consts.NotifyKind.GOAL,
+            "key": consts.NOTIFY_GOAL_KEY.format(
+                match_id=match.id, home=match.live_home_score, away=match.live_away_score,
+            ),
+            "phase": consts.NotifyKind.GOAL,
+            "hs": match.live_home_score, "as": match.live_away_score,
+            "minute": match.live_minute,
+        })
+
+    if live == consts.LiveStatus.HALFTIME and has_live_score:
+        events.append({
+            "kind": consts.NotifyKind.HALFTIME, "key": str(match.id),
+            "phase": consts.NotifyKind.HALFTIME,
+            "hs": match.live_home_score, "as": match.live_away_score,
+        })
+
+    if over:
+        # Prefer the official result (it carries the points members earned); fall
+        # back to the live final when the official sync hasn't landed yet.
+        if over_official:
+            hs, as_ = match.home_score, match.away_score
+        else:
+            hs, as_ = match.live_home_score, match.live_away_score
+        events.append({
+            "kind": consts.NotifyKind.FULLTIME, "key": str(match.id),
+            "phase": consts.NotifyKind.FULLTIME, "hs": hs, "as": as_,
+        })
+
+    return events
+
+
+def _predictions_index(recipients, matches):
+    """{(user_id, match_id): [Prediction, ...]} across the recipients' leagues —
+    a member can predict the same match differently in several leagues."""
+    from .models import Prediction
+
+    preds = Prediction.objects.filter(
+        match_id__in=[m.id for m in matches],
+        membership__user_id__in=[u.id for u in recipients],
+    ).select_related("membership", "membership__league")
+    index = {}
+    for p in preds:
+        index.setdefault((p.membership.user_id, p.match_id), []).append(p)
+    return index
+
+
+def _fmt_points(value) -> str:
+    """A summed Decimal of points as a compact Persian-digit string (no trailing
+    zeros): «۵», «۷٫۵»."""
+    text = format(value.normalize(), "f") if hasattr(value, "normalize") else str(value)
+    if "." in text:
+        text = text.rstrip("0").rstrip(".")
+    return consts.to_fa_digits(text)
+
+
+def _event_title(event) -> str:
+    phase = event["phase"]
+    if phase == consts.NotifyKind.KICKOFF:
+        return consts.TG_EVENT_KICKOFF_TITLE
+    if phase == consts.NotifyKind.HALFTIME:
+        return consts.TG_EVENT_HALFTIME_TITLE
+    if phase == consts.NotifyKind.FULLTIME:
+        return consts.TG_EVENT_FULLTIME_TITLE
+    # The minute comes straight from the live provider, so escape it before it
+    # lands in the parse_mode=HTML message (same care as the team names).
+    minute = _esc((event.get("minute") or "").strip())
+    clock = consts.TG_EVENT_GOAL_CLOCK.format(minute=consts.to_fa_digits(minute)) if minute else ""
+    return consts.TG_EVENT_GOAL_TITLE.format(clock=clock)
+
+
+def _event_fixture(event, match) -> str:
+    home, hflag, away, aflag = _sides(match)
+    if event["hs"] is None or event["as"] is None:
+        return consts.TG_EVENT_FIXTURE_LINE.format(
+            hflag=hflag, home=home, away=away, aflag=aflag)
+    return consts.TG_EVENT_SCORE_LINE.format(
+        hflag=hflag, home=home, away=away, aflag=aflag,
+        hs=consts.to_fa_digits(event["hs"]), **{"as": consts.to_fa_digits(event["as"])},
+    )
+
+
+def _distinct_picks(predictions):
+    """Sorted unique (home, away) scorelines the member predicted for the match."""
+    return sorted({(p.predicted_home, p.predicted_away) for p in predictions})
+
+
+def _personal_lines(event, match, predictions) -> list:
+    """The personalized tail of the message: the member's pick(s), an on-track
+    hint mid-match, and the points they earned at full time."""
+    picks = _distinct_picks(predictions)
+    is_final = event["phase"] == consts.NotifyKind.FULLTIME
+    lines = []
+
+    if not picks:
+        # Only nag about a missed prediction at full time (mid-match it's noise).
+        return [consts.TG_EVENT_NO_PICK] if is_final else []
+
+    rendered = consts.TG_EVENT_PICK_JOIN.join(
+        consts.TG_EVENT_PICK.format(
+            home=consts.to_fa_digits(h), away=consts.to_fa_digits(a))
+        for h, a in picks
+    )
+    lines.append(consts.TG_EVENT_YOUR_PICK.format(picks=rendered))
+
+    if is_final:
+        from . import scoring
+
+        total = sum(
+            scoring.provisional_points(
+                p.membership.league, match, p, event["hs"], event["as"],
+            )[0]
+            for p in predictions
+        )
+        lines.append(
+            consts.TG_EVENT_POINTS.format(points=_fmt_points(total))
+            if total else consts.TG_EVENT_POINTS_NONE
+        )
+    elif event["hs"] is not None and (event["hs"], event["as"]) in set(picks):
+        # Mid-match and the live scoreline already matches a prediction exactly.
+        lines.append(consts.TG_EVENT_ON_TRACK)
+
+    return lines
+
+
+def _render_event(event, match, predictions) -> str:
+    lines = [_event_title(event), _event_fixture(event, match)]
+    lines += _personal_lines(event, match, predictions)
+    return "\n".join(lines)
+
+
+def run_match_events(now=None) -> dict:
+    """Send live match-event DMs (kickoff/goal/half-time/full-time) to opted-in
+    members, personalized with their prediction. Returns {'events': n}."""
+    now = now or timezone.now()
+    sent = {"events": 0}
+
+    # Cheapest gate first: most ticks have no in-window match, so skip loading the
+    # whole opted-in recipient set when there's nothing to narrate.
+    matches = _event_window_matches(now)
+    if not matches:
+        return sent
+    recipients = _match_event_recipients()
+    if not recipients:
+        return sent
+
+    preds = _predictions_index(recipients, matches)
+    for match in matches:
+        for event in _events_for(match, now):
+            for user in recipients:
+                # Rendered per recipient: the full-time points line depends on the
+                # member's own leagues/scoring, so text can't be shared across
+                # members even when their predicted scoreline matches.
+                text = _render_event(event, match, preds.get((user.id, match.id), []))
+                if _send_once(user, event["kind"], event["key"], text):
+                    sent["events"] += 1
+
+    return sent
+
+
 def run_tick(now=None) -> dict:
     """The periodic job (management command + tick endpoint).
 
     Pulls inbound bot updates, refreshes live scores + finalizes due results for
     each active competition (so those work without app traffic), then sends due
-    reminders. Cheap no-ops throughout when nothing is configured/pending."""
+    match-event DMs and prediction reminders. Cheap no-ops throughout when
+    nothing is configured/pending."""
     from . import live, results_sync
     from .models import Competition
 
     now = now or timezone.now()
-    result = {"polled": 0, "live": 0, "finalized": 0, "digests": 0, "nudges": 0}
+    result = {
+        "polled": 0, "live": 0, "finalized": 0, "events": 0, "digests": 0, "nudges": 0,
+    }
 
     result["polled"] = poll_updates(now)
     for competition in Competition.objects.filter(is_active=True):
@@ -446,5 +690,8 @@ def run_tick(now=None) -> dict:
             result["live"] += 1
         if results_sync.finalize_if_due(competition, now):
             result["finalized"] += 1
+    # Match events first (uses the freshly-refreshed live state + official result),
+    # then the prediction reminders.
+    result.update(run_match_events(now))
     result.update(run_notifications(now))
     return result

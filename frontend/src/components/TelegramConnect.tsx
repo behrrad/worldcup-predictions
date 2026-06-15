@@ -145,8 +145,8 @@ export default function TelegramConnect({
       {status.linked ? (
         <>
           <p className="muted">
-            ✅ حساب تلگرام شما متصل است. یادآوری بازی‌هایی که پیش‌بینی نکرده‌ای را
-            در تلگرام می‌فرستیم.
+            ✅ حساب تلگرام شما متصل است. یادآوری بازی‌هایی که پیش‌بینی نکرده‌ای و —
+            در صورت فعال‌سازی — رویدادهای زندهٔ بازی‌ها را در تلگرام می‌فرستیم.
           </p>
           <div className="pred-actions">
             <button
@@ -157,6 +157,15 @@ export default function TelegramConnect({
               {status.notify ? "🔕 خاموش کردن یادآوری‌ها" : "🔔 روشن کردن یادآوری‌ها"}
             </button>
             <button
+              className={`btn ${status.notify_matches ? "btn-outline" : "btn-pitch"}`}
+              onClick={() => patch({ notify_matches: !status.notify_matches })}
+              disabled={busy}
+            >
+              {status.notify_matches
+                ? "⚽️ خاموش کردن اعلان رویدادهای بازی"
+                : "⚽️ روشن کردن اعلان رویدادهای بازی"}
+            </button>
+            <button
               className="btn btn-sm"
               onClick={() => patch({ unlink: true })}
               disabled={busy}
@@ -164,6 +173,12 @@ export default function TelegramConnect({
               قطع اتصال
             </button>
           </div>
+          {status.notify_matches && (
+            <p className="muted" style={{ marginTop: 8, fontSize: "0.85em" }}>
+              شروع، گل‌ها، پایان نیمه و نتیجهٔ نهایی هر بازی را همراه با پیش‌بینی
+              خودت برایت می‌فرستیم.
+            </p>
+          )}
         </>
       ) : (
         <>

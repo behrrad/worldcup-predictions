@@ -244,6 +244,193 @@ class RunNotificationsTests(TestCase):
 
 
 # --------------------------------------------------------------------------- #
+# Live match events (kickoff / goal / half-time / full-time)
+# --------------------------------------------------------------------------- #
+def _match_recipient(chat_id, **kw):
+    user = _linked(chat_id, **kw)
+    user.telegram_notify_matches = True
+    user.save()
+    return user
+
+
+def _set_live(match, status, home=None, away=None, minute=""):
+    """Write live_* fields the way live.py does (queryset.update, never save)."""
+    from predictions.models import Match
+
+    Match.objects.filter(pk=match.pk).update(
+        live_status=status, live_home_score=home, live_away_score=away,
+        live_minute=minute, live_updated_at=timezone.now(),
+    )
+
+
+class MatchEventTests(TestCase):
+    def setUp(self):
+        self.comp = make_competition()
+        self.league = make_league(self.comp)
+        self.user = _match_recipient(55)
+        self.membership = join(self.league, self.user)
+
+    def _predict(self, match, home, away, membership=None):
+        return Prediction.objects.create(
+            membership=membership or self.membership, match=match,
+            predicted_home=home, predicted_away=away,
+        )
+
+    def _texts(self, now):
+        with mock.patch.object(telegram, "send_message", return_value=True) as sm:
+            sent = telegram.run_match_events(now)
+        return sent, [c.args[1] for c in sm.call_args_list]
+
+    def test_kickoff_fires_once_with_pick(self):
+        now = timezone.now()
+        match = make_match(self.comp, kickoff=now - timedelta(minutes=5))
+        self._predict(match, 2, 1)
+        sent, texts = self._texts(now)
+        self.assertEqual(sent["events"], 1)
+        self.assertTrue(any(consts.TG_EVENT_KICKOFF_TITLE in t for t in texts))
+        self.assertTrue(any("۲-۱" in t for t in texts))  # the pick, Persian digits
+        # A second tick sends nothing new.
+        self.assertEqual(self._texts(now)[0]["events"], 0)
+        self.assertEqual(NotificationLog.objects.filter(
+            kind=consts.NotifyKind.KICKOFF, dedup_key=str(match.id)).count(), 1)
+
+    def test_goal_shows_on_track_when_score_matches_pick(self):
+        now = timezone.now()
+        match = make_match(self.comp, kickoff=now - timedelta(minutes=20))
+        self._predict(match, 1, 0)
+        _set_live(match, consts.LiveStatus.LIVE, home=1, away=0, minute="35")
+        _, texts = self._texts(now)
+        goal = next(t for t in texts if consts.TG_EVENT_GOAL_TITLE.split("{")[0] in t)
+        self.assertIn(consts.TG_EVENT_ON_TRACK, goal)
+        self.assertIn("۳۵", goal)  # the live minute
+
+    def test_goal_dedup_is_per_scoreline(self):
+        now = timezone.now()
+        match = make_match(self.comp, kickoff=now - timedelta(minutes=20))
+        _set_live(match, consts.LiveStatus.LIVE, home=1, away=0)
+        self._texts(now)
+        _set_live(match, consts.LiveStatus.LIVE, home=2, away=1)
+        self._texts(now)
+        self.assertEqual(
+            NotificationLog.objects.filter(kind=consts.NotifyKind.GOAL).count(), 2)
+        # Re-observing 2-1 sends no new goal.
+        self.assertEqual(self._texts(now)[0]["events"], 0)
+
+    def test_halftime_event_logged(self):
+        now = timezone.now()
+        match = make_match(self.comp, kickoff=now - timedelta(minutes=50))
+        _set_live(match, consts.LiveStatus.HALFTIME, home=0, away=0)
+        self._texts(now)
+        self.assertTrue(NotificationLog.objects.filter(
+            kind=consts.NotifyKind.HALFTIME, dedup_key=str(match.id)).exists())
+
+    def test_fulltime_official_includes_points(self):
+        now = timezone.now()
+        match = make_match(self.comp, kickoff=now - timedelta(hours=2))
+        self._predict(match, 2, 1)
+        match.home_score, match.away_score = 2, 1
+        match.save()  # official result -> FINISHED, scores recomputed
+        sent, texts = self._texts(now)
+        ft = next(t for t in texts if consts.TG_EVENT_FULLTIME_TITLE in t)
+        self.assertIn(consts.TG_EVENT_POINTS.split("{")[0], ft)  # earned points line
+        # Only full-time fires (kickoff is suppressed once the match is over).
+        self.assertEqual(sent["events"], 1)
+
+    def test_fulltime_live_fallback_when_no_official_result(self):
+        now = timezone.now()
+        match = make_match(self.comp, kickoff=now - timedelta(hours=1))
+        self._predict(match, 2, 1)  # exact, scored off the live final
+        _set_live(match, consts.LiveStatus.FULL_TIME, home=2, away=1)
+        _, texts = self._texts(now)
+        ft = next(t for t in texts if consts.TG_EVENT_FULLTIME_TITLE in t)
+        self.assertIn("۲ - ۱", ft)
+        self.assertIn(consts.TG_EVENT_POINTS.split("{")[0], ft)
+
+    def test_fulltime_zero_points_message(self):
+        now = timezone.now()
+        self.league.points_participation = 0  # a wrong pick is worth nothing here
+        self.league.save()
+        match = make_match(self.comp, kickoff=now - timedelta(hours=1))
+        self._predict(match, 0, 0)  # wrong outcome vs a 2-1 result
+        _set_live(match, consts.LiveStatus.FULL_TIME, home=2, away=1)
+        _, texts = self._texts(now)
+        ft = next(t for t in texts if consts.TG_EVENT_FULLTIME_TITLE in t)
+        self.assertIn(consts.TG_EVENT_POINTS_NONE, ft)
+
+    def test_fulltime_no_pick_message(self):
+        now = timezone.now()
+        match = make_match(self.comp, kickoff=now - timedelta(hours=1))
+        _set_live(match, consts.LiveStatus.FULL_TIME, home=1, away=0)
+        _, texts = self._texts(now)
+        ft = next(t for t in texts if consts.TG_EVENT_FULLTIME_TITLE in t)
+        self.assertIn(consts.TG_EVENT_NO_PICK, ft)
+
+    def test_no_events_without_optin(self):
+        now = timezone.now()
+        self.user.telegram_notify_matches = False
+        self.user.save()
+        make_match(self.comp, kickoff=now - timedelta(minutes=5))
+        self.assertEqual(self._texts(now)[0]["events"], 0)
+
+    def test_no_events_when_unlinked(self):
+        now = timezone.now()
+        self.user.telegram_chat_id = None
+        self.user.save()
+        make_match(self.comp, kickoff=now - timedelta(minutes=5))
+        self.assertEqual(self._texts(now)[0]["events"], 0)
+
+    def test_old_match_outside_window(self):
+        now = timezone.now()
+        match = make_match(self.comp, kickoff=now - timedelta(hours=5))
+        match.home_score, match.away_score = 1, 0
+        match.save()
+        self.assertEqual(self._texts(now)[0]["events"], 0)
+
+    def test_failed_send_rolls_back_for_retry(self):
+        now = timezone.now()
+        make_match(self.comp, kickoff=now - timedelta(minutes=5))
+        with mock.patch.object(telegram, "send_message", return_value=False):
+            telegram.run_match_events(now)
+        self.assertEqual(NotificationLog.objects.count(), 0)
+
+    def test_no_stale_kickoff_for_match_already_underway(self):
+        # Opting in / first seeing a match well after kickoff must not DM "kickoff!".
+        now = timezone.now()
+        make_match(self.comp, kickoff=now - timedelta(minutes=40))
+        self.assertEqual(self._texts(now)[0]["events"], 0)
+        self.assertFalse(
+            NotificationLog.objects.filter(kind=consts.NotifyKind.KICKOFF).exists())
+
+    def test_no_goal_event_at_halftime(self):
+        now = timezone.now()
+        match = make_match(self.comp, kickoff=now - timedelta(minutes=50))
+        _set_live(match, consts.LiveStatus.HALFTIME, home=1, away=0)
+        self._texts(now)
+        self.assertFalse(
+            NotificationLog.objects.filter(kind=consts.NotifyKind.GOAL).exists())
+        self.assertTrue(
+            NotificationLog.objects.filter(kind=consts.NotifyKind.HALFTIME).exists())
+
+    def test_live_fulltime_without_scores_does_not_crash_or_fire(self):
+        # A FULL_TIME live status with NULL scores (partial/stale row) must not
+        # feed None into the scorer — it should simply not fire full-time yet.
+        now = timezone.now()
+        match = make_match(self.comp, kickoff=now - timedelta(hours=1))
+        self._predict(match, 1, 0)
+        _set_live(match, consts.LiveStatus.FULL_TIME, home=None, away=None)
+        self.assertEqual(self._texts(now)[0]["events"], 0)
+        self.assertFalse(
+            NotificationLog.objects.filter(kind=consts.NotifyKind.FULLTIME).exists())
+
+    def test_goal_minute_is_html_escaped(self):
+        # The minute is provider-controlled; its "<" must be escaped before it
+        # lands in the parse_mode=HTML message (the bold <b> tags are ours).
+        title = telegram._event_title({"phase": consts.NotifyKind.GOAL, "minute": "45<b"})
+        self.assertIn("&lt;", title)
+        self.assertNotIn("۴۵<", title)  # the unescaped minute must not appear
+
+
+# --------------------------------------------------------------------------- #
 # Endpoints
 # --------------------------------------------------------------------------- #
 class TelegramEndpointTests(TestCase):
@@ -269,6 +456,25 @@ class TelegramEndpointTests(TestCase):
         self.assertEqual(res.status_code, 200)
         self.user.refresh_from_db()
         self.assertFalse(self.user.telegram_notify)
+
+    def test_patch_toggles_notify_matches(self):
+        res = self.client.patch(
+            reverse("api_me_telegram"), {"notify_matches": True}, format="json",
+        )
+        self.assertEqual(res.status_code, 200)
+        self.user.refresh_from_db()
+        self.assertTrue(self.user.telegram_notify_matches)  # default was off
+        self.assertTrue(res.json()["notify_matches"])
+
+    def test_patch_applies_both_toggles_in_one_request(self):
+        res = self.client.patch(
+            reverse("api_me_telegram"),
+            {"notify": False, "notify_matches": True}, format="json",
+        )
+        self.assertEqual(res.status_code, 200)
+        self.user.refresh_from_db()
+        self.assertFalse(self.user.telegram_notify)
+        self.assertTrue(self.user.telegram_notify_matches)
 
     def test_patch_unlinks(self):
         self.user.telegram_chat_id = 99

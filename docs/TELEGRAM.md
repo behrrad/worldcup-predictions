@@ -1,8 +1,16 @@
-# Telegram reminders
+# Telegram reminders & match events
 
-A bot DMs members who haven't predicted a match yet — a once-a-day **morning
-digest** of the day's still-open matches, plus a final **nudge** shortly before
-kickoff. Built to the same philosophy as the live/results pipelines: **env-gated**
+The bot DMs members two distinct (independently opt-in) streams:
+
+1. **Prediction reminders** — a once-a-day **morning digest** of the day's
+   still-open matches, plus a final **nudge** shortly before kickoff, to members
+   who haven't predicted yet (`telegram_notify`, on by default).
+2. **Live match events** — **kickoff**, **goals**, **half-time** and
+   **full-time** for matches as they happen, personalized with the member's own
+   prediction and the points they earned (`telegram_notify_matches`, **off by
+   default** — far higher volume, so it's strictly opt-in).
+
+Both are built to the same philosophy as the live/results pipelines: **env-gated**
 (no token ⇒ silent no-op), **no cron/worker** of our own, **atomic-claim**
 de-duplication, and `urllib` only (no new dependency).
 
@@ -23,18 +31,37 @@ Sending (no webhook, no cron):
   → telegram.run_tick():
        1. poll_updates()        — drain bot updates (links /start, handles /stop)
        2. live.refresh_if_stale + results_sync.finalize_if_due (bonus: works w/o traffic)
-       3. run_notifications()   — send due morning digests + pre-kickoff nudges
+       3. run_match_events()    — DM kickoff/goal/HT/FT off the fresh live state
+       4. run_notifications()   — send due morning digests + pre-kickoff nudges
 ```
+
+> **Match-event timing.** Goal alerts are only as fine-grained as the tick. At
+> the default ~10-min cron, several goals between two ticks collapse into the
+> latest scoreline (we DM the new scoreline once, not each intermediate goal).
+> **Kickoff** and **full-time** are robust regardless — kickoff also fires from
+> the schedule and full-time from the official result. If you want near-live goal
+> alerts, run the tick workflow more often (it's a cheap no-op when nothing is
+> in play).
 
 - **Inbound is pulled, not pushed** (getUpdates behind an atomic claim on the
   singleton `TelegramState` row) — no public webhook to expose. The profile
   page also polls `GET /api/me/telegram/`, which drains updates, so the link
   completes within a couple of seconds of tapping Start.
-- **Idempotent.** Every reminder is guarded by a `NotificationLog` row
+- **Idempotent.** Every DM is guarded by a `NotificationLog` row
   (`unique(user, kind, dedup_key)`): the digest is keyed by the local date, the
-  nudge by the match id. A failed send rolls its row back so it retries.
-- **Per-league locks are respected**: a user is only reminded about a match they
-  can still predict (`Match.is_open_for(league.lock_minutes)`) and haven't.
+  nudge / kickoff / half-time / full-time by the match id, and a **goal** by the
+  scoreline (`"<match id>:<home>-<away>"`, so each new scoreline fires once). A
+  failed send rolls its row back so it retries.
+- **Per-league locks are respected** (reminders): a user is only reminded about a
+  match they can still predict (`Match.is_open_for(league.lock_minutes)`) and
+  haven't.
+- **Match events are personalized.** `run_match_events` reads each in-window
+  match's `live_*` fields (refreshed earlier in the same tick) plus its official
+  result, then DMs every `telegram_notify_matches` member — with their own
+  prediction, an "on track" hint when the live score already matches it, and the
+  points they earned at full time (summed across their leagues, since a member
+  can predict the same match differently in each). Full-time prefers the official
+  result and falls back to the live final when the official sync hasn't landed.
 
 ## One-time setup (the part only you can do)
 
@@ -70,6 +97,8 @@ start getting reminders.
 | `TELEGRAM_DIGEST_HOUR` | 9 | morning digest goes out at/after this local hour |
 | `TELEGRAM_LINK_TOKEN_MAX_AGE_SECONDS` | 3600 | how long a connect link stays valid |
 | `TELEGRAM_POLL_SECONDS` | 2 | min spacing between getUpdates drains |
+| `TELEGRAM_EVENT_WINDOW_HOURS` | 4 | only DM match events for matches whose kickoff is within this window (keeps a fresh opt-in from being flooded with older matches) |
+| `TELEGRAM_KICKOFF_GRACE_MINUTES` | 20 | a "kickoff" DM only fires this soon after the real kickoff (so a late opt-in / late feed doesn't get a stale "kickoff!") |
 
 The digest "today" and the times shown use `settings.TIME_ZONE` (Tehran).
 
@@ -87,7 +116,7 @@ The digest "today" and the times shown use `settings.TIME_ZONE` (Tehran).
 
 | Method | Path | Notes |
 |--------|------|-------|
-| `GET/PATCH` | `/api/me/telegram/` | link status + connect deep link; PATCH `{notify}` / `{unlink}`. GET also drains bot updates. |
+| `GET/PATCH` | `/api/me/telegram/` | link status + connect deep link; PATCH `{notify}` (reminders) / `{notify_matches}` (match events) / `{unlink}`. GET also drains bot updates. |
 | `POST` | `/api/tasks/tick/` | scheduler-only; gated by `X-Task-Key` == `TASK_TRIGGER_KEY` (403 when the key is unset). |
 
 ## Not in v1 (clean follow-ups)
