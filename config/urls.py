@@ -15,7 +15,7 @@ urlpatterns = [
 if settings.DEBUG:
     urlpatterns += static(settings.MEDIA_URL, document_root=settings.MEDIA_ROOT)
 
-# Branded admin headers (Persian).
-admin.site.site_header = consts.BRAND_NAME
-admin.site.site_title = consts.BRAND_NAME
-admin.site.index_title = "پنل مدیریت"
+# The Unfold theme owns the site header/title via settings.UNFOLD (its
+# AdminSite.each_context overrides admin.site.site_header/site_title). The
+# index-page heading has no UNFOLD equivalent, so it's set here.
+admin.site.index_title = consts.ADMIN_INDEX_TITLE

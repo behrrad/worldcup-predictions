@@ -6,6 +6,9 @@ PyJWT[crypto]>=2.8
 djangorestframework>=3.15
 django-cors-headers>=4.4
 
+# --- Admin theme ---
+django-unfold>=0.97         # modern re-skin of the Django admin (config in settings.UNFOLD)
+
 # --- Results export ---
 openpyxl>=3.1                # builds the per-league results .xlsx (predictions/export.py)
 

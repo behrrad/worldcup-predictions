@@ -1,4 +1,7 @@
-from django.contrib.auth.forms import UserChangeForm, UserCreationForm
+# Unfold's form variants are drop-in subclasses of Django's that restyle the
+# password/permission widgets to match the themed admin. Keeping our custom
+# field sets, we just swap the base classes.
+from unfold.forms import UserChangeForm, UserCreationForm
 
 from .models import User
 
