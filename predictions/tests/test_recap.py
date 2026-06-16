@@ -73,6 +73,25 @@ class RecapTestCase(APITestCase):
     def test_two_matchdays_discovered(self):
         self.assertEqual(len(self.dates), 2)
 
+    def test_day_unavailable_until_all_its_matches_finish(self):
+        # A new matchday with one finished match and one still to be played.
+        base = timezone.now().replace(hour=9, minute=0, second=0, microsecond=0)
+        d3 = base - timedelta(days=1)
+        c1 = make_match(self.comp, kickoff=d3)
+        c1.home_score, c1.away_score = 1, 0
+        c1.save()  # finished
+        c2 = make_match(self.comp, kickoff=d3 + timedelta(hours=1))  # scheduled, no result
+        d3_str = recap._local_date(d3).strftime(consts.RECAP_DATE_FORMAT)
+        # Not available while c2 is unplayed; asking for it falls back to a complete day.
+        self.assertNotIn(d3_str, recap.available_dates(self.comp))
+        data = recap.build_recap(self.league, self._membership(self.me), d3_str)
+        self.assertNotEqual(data["date"], d3_str)
+        self.assertIn(data["date"], recap.available_dates(self.comp))
+        # Finishing the last match unlocks the day.
+        c2.home_score, c2.away_score = 2, 2
+        c2.save()
+        self.assertIn(d3_str, recap.available_dates(self.comp))
+
     def test_personal_day1(self):
         data = recap.build_recap(self.league, self._membership(self.me), self.dates[0])
         me = data["me"]
