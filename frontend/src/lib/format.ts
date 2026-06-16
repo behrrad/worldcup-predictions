@@ -33,3 +33,15 @@ export function fmtTime(iso: string, timeZone: string = SSR_TZ): string {
 export function fa(n: number | string): string {
   return String(n).replace(/[0-9]/g, (d) => "۰۱۲۳۴۵۶۷۸۹"[Number(d)]);
 }
+
+/**
+ * A matchday label (full Jalali date) from a `YYYY-MM-DD` string. A matchday is
+ * a calendar day in the league's timezone (SSR_TZ), so it's always rendered
+ * there — noon Tehran keeps the date stable whatever the viewer's timezone is.
+ */
+export function fmtJalaliDay(ymd: string): string {
+  return new Intl.DateTimeFormat("fa-IR", {
+    dateStyle: "full",
+    timeZone: SSR_TZ,
+  }).format(new Date(`${ymd}T12:00:00+03:30`));
+}

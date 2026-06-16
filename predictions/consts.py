@@ -487,6 +487,22 @@ def bracket_label_fa(label: str) -> str:
 
 
 # --------------------------------------------------------------------------- #
+# Matchday recap (the animated end-of-day story; see predictions/recap.py)
+# --------------------------------------------------------------------------- #
+# A "matchday" is a calendar day — in the schedule's timezone — on which at
+# least one match finished. The recap groups, ranks and compares that day's
+# results. We use the host region's timezone (not the viewer's): World Cup 2026
+# is played across North America, and US-Pacific is the westernmost host zone,
+# so a day's whole slate of kickoffs lands on one calendar date there. Grouping
+# by Tehran instead would split a single FIFA matchday across midnight (an
+# Americas evening kickoff is the early hours of the next day in Tehran).
+RECAP_MATCHDAY_TZ = "America/Los_Angeles"
+RECAP_DATE_FORMAT = "%Y-%m-%d"
+# How many members the closing "podium" card shows (current standings top N).
+RECAP_PODIUM_SIZE = 3
+
+
+# --------------------------------------------------------------------------- #
 # Live scores (in-play state shown on the site; never feeds the scoring engine)
 # --------------------------------------------------------------------------- #
 # In-play state of a match as reported by a live provider. Stored on Match in

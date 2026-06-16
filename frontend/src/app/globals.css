@@ -401,6 +401,134 @@ a { color: inherit; text-decoration: none; }
 .score-live { font-size: 1.3rem; padding: 3px 13px; }
 .live-minute { color: var(--red); font-weight: 800; font-size: 0.78rem; }
 
+/* ---------- Matchday recap (the animated end-of-day story) ---------- */
+.recap-banner {
+  display: flex; align-items: center; gap: 14px; padding: 16px 20px; margin-bottom: 18px;
+  border-radius: var(--radius); border: 1px solid var(--gold);
+  background: linear-gradient(120deg, var(--gold-tint), var(--surface) 75%);
+  box-shadow: var(--shadow-sm); transition: transform 0.12s ease, box-shadow 0.2s ease;
+}
+.recap-banner:hover { transform: translateY(-2px); box-shadow: var(--shadow); }
+.recap-banner-emoji { font-size: 1.8rem; }
+.recap-banner-text { display: flex; flex-direction: column; line-height: 1.4; }
+.recap-banner-text b { font-size: 1.02rem; }
+.recap-banner-text .muted { font-size: 0.85rem; }
+.recap-banner-cta { margin-inline-start: auto; color: var(--gold-ink); font-weight: 800; white-space: nowrap; }
+
+.recap { max-width: 560px; margin-inline: auto; }
+.recap-head { display: flex; align-items: center; justify-content: space-between; gap: 10px; margin-bottom: 14px; }
+.recap-day-label { font-family: var(--display); font-size: 1.05rem; text-align: center; flex: 1; }
+.btn.is-disabled { opacity: 0.4; pointer-events: none; }
+
+.recap-dots { display: flex; justify-content: center; gap: 7px; margin-bottom: 12px; flex-wrap: wrap; }
+.recap-dot {
+  width: 9px; height: 9px; padding: 0; border-radius: 50%; border: none; cursor: pointer;
+  background: var(--line-strong); transition: transform 0.2s ease, background 0.2s ease;
+}
+.recap-dot.active { background: var(--red); transform: scale(1.3); }
+
+.recap-stage { position: relative; min-height: min(72vh, 560px); }
+.recap-card {
+  position: absolute; inset: 0; border-radius: 22px; border: 1px solid var(--line);
+  background: var(--surface); box-shadow: var(--shadow); overflow: hidden;
+  --accent: var(--red);
+}
+
+.recap-card-body {
+  height: 100%; overflow-y: auto;
+  display: flex; flex-direction: column; align-items: center;
+  /* `safe`: center short cards, but top-align tall ones (e.g. the 18-row
+     scoreboard) so the start isn't clipped above the scroll area. */
+  justify-content: safe center;
+  text-align: center; gap: 14px; padding: 34px 26px;
+}
+/* tone washes — each card type gets a soft accent gradient (theme-aware) */
+.recap-card.tone-intro  { --accent: var(--blue);  background: linear-gradient(160deg, var(--blue-tint), var(--surface) 70%); }
+.recap-card.tone-you    { --accent: var(--red);   background: linear-gradient(160deg, var(--red-tint), var(--surface) 70%); }
+.recap-card.tone-muted  { --accent: var(--muted); background: var(--surface); }
+.recap-card.tone-green  { --accent: var(--green); background: linear-gradient(160deg, var(--green-tint), var(--surface) 70%); }
+.recap-card.tone-blue   { --accent: var(--blue);  background: linear-gradient(160deg, var(--blue-tint), var(--surface) 70%); }
+.recap-card.tone-gold   { --accent: var(--gold);  background: linear-gradient(160deg, var(--gold-tint), var(--surface) 70%); }
+.recap-card.tone-red    { --accent: var(--red);   background: linear-gradient(160deg, var(--red-tint), var(--surface) 70%); }
+.recap-card.tone-rank   { --accent: var(--blue);  background: linear-gradient(160deg, var(--blue-tint), var(--surface) 70%); }
+.recap-card.tone-podium { --accent: var(--gold);  background: linear-gradient(160deg, var(--gold-tint), var(--surface) 70%); }
+
+.recap-eyebrow { font-weight: 800; color: var(--accent); letter-spacing: 0.04em; font-size: 0.9rem; margin: 0; }
+.recap-headline { font-family: var(--display); font-weight: 400; font-size: 1.7rem; margin: 0; }
+.recap-sub { color: var(--muted); margin: 0; font-size: 0.98rem; max-width: 36ch; }
+.recap-hint { color: var(--muted); font-size: 0.84rem; margin: 6px 0 0; }
+.recap-emoji { font-size: 3rem; line-height: 1; }
+.recap-big { font-family: var(--display); font-weight: 400; font-size: 5rem; line-height: 1; color: var(--accent); }
+.recap-big.tone-gold { color: var(--gold-ink); }
+.recap-flag-top { color: var(--gold-ink); font-weight: 800; }
+
+.recap-hits { display: flex; flex-wrap: wrap; gap: 8px; justify-content: center; }
+.recap-hit { padding: 5px 12px; border-radius: 999px; font-weight: 700; font-size: 0.85rem; background: var(--surface-2); border: 1px solid var(--line); }
+.recap-hit.tone-green { background: var(--green-tint); color: var(--green-ink); border-color: var(--green); }
+.recap-hit.tone-blue  { background: var(--blue-tint);  color: var(--blue-ink);  border-color: var(--blue); }
+.recap-hit.tone-gold  { background: var(--gold-tint);  color: var(--gold-ink);  border-color: var(--gold); }
+.recap-hit.tone-red   { background: var(--red-tint);   color: var(--danger); }
+.recap-hit.tone-neutral { color: var(--muted); }
+
+.recap-results { display: flex; flex-direction: column; gap: 8px; width: 100%; max-width: 380px; }
+
+.recap-match { display: grid; grid-template-columns: 1fr auto 1fr; align-items: center; gap: 8px; width: 100%; }
+.recap-side { display: flex; align-items: center; gap: 7px; font-weight: 700; justify-content: flex-end; }
+.recap-side.away { justify-content: flex-start; }
+.recap-match-score {
+  font-family: var(--display); font-weight: 400; background: var(--ink); color: #fff;
+  border-radius: 10px; padding: 2px 12px; white-space: nowrap; font-size: 1.15rem;
+}
+[data-theme="dark"] .recap-match-score { background: #120f17; }
+
+.recap-call { display: flex; flex-direction: column; gap: 12px; width: 100%; max-width: 400px; align-items: center; }
+.recap-call-meta { display: flex; flex-wrap: wrap; gap: 10px; align-items: center; justify-content: center; }
+.recap-points-pill { background: var(--accent); color: #fff; border-radius: 999px; padding: 3px 13px; font-weight: 800; font-size: 0.85rem; }
+.recap-points-pill.tone-green { background: var(--green); }
+.recap-points-pill.tone-blue  { background: var(--blue); }
+.recap-points-pill.tone-gold  { background: var(--gold); color: #3a2a00; }
+.recap-points-pill.tone-neutral { background: var(--muted); }
+
+.recap-author { display: flex; align-items: center; gap: 10px; font-weight: 800; }
+
+.recap-rank-move { display: flex; align-items: center; gap: 16px; font-family: var(--display); }
+.recap-rank-from { font-size: 2.4rem; color: var(--muted); }
+.recap-rank-arrow { font-size: 1.6rem; color: var(--muted); }
+.recap-rank-to { font-size: 5rem; line-height: 1; color: var(--accent); }
+.recap-rank-to.up { color: var(--green-ink); }
+.recap-rank-to.down { color: var(--danger); }
+
+.recap-avatar { box-shadow: var(--shadow-sm); }
+
+.recap-podium { display: flex; flex-direction: column; gap: 10px; width: 100%; max-width: 400px; }
+.recap-podium-row { display: flex; align-items: center; gap: 12px; padding: 10px 14px; border-radius: 14px; background: var(--surface-2); border: 1px solid var(--line); }
+.recap-podium-row.me { background: var(--gold-tint); border-color: var(--gold); }
+.recap-podium-rank { font-size: 1.5rem; width: 32px; text-align: center; }
+.recap-podium-name { font-weight: 700; flex: 1; text-align: start; }
+
+/* Day scoreboard (the reordering animation: rows reshuffle start-of-day -> end) */
+.recap-sb { display: flex; flex-direction: column; gap: 6px; width: 100%; max-width: 440px; }
+.recap-sb-row { display: flex; align-items: center; gap: 10px; padding: 7px 12px; border-radius: 12px; background: var(--surface-2); border: 1px solid var(--line); }
+.recap-sb-row.me { background: var(--gold-tint); border-color: var(--gold); }
+.recap-sb-rank { font-family: var(--display); font-weight: 400; min-width: 22px; text-align: center; color: var(--muted); }
+.recap-sb-name { flex: 1; font-weight: 700; text-align: start; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.recap-sb-pts { font-family: var(--display); font-weight: 400; font-size: 1.25rem; color: var(--green-ink); min-width: 34px; text-align: end; }
+.recap-sb-total { font-family: var(--display); font-weight: 400; font-size: 1.1rem; color: var(--ink); min-width: 30px; text-align: end; }
+.recap-sb-row.zero { opacity: 0.65; }
+.recap-sb-row.zero .recap-sb-pts { color: var(--muted); }
+
+.recap-nav { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-top: 16px; }
+.recap-counter { color: var(--muted); font-weight: 700; }
+
+.recap-empty { text-align: center; }
+.recap-empty .recap-emoji { margin-bottom: 8px; }
+
+@media (max-width: 600px) {
+  .recap-stage { min-height: 74vh; }
+  .recap-big { font-size: 4rem; }
+  .recap-rank-to { font-size: 4rem; }
+}
+
 /* ---------- Live leaderboard (official / live tabs on the scoreboard) ---------- */
 button.tab { cursor: pointer; font: inherit; font-weight: 600; }
 .tab .live-dot { display: inline-block; margin-inline-end: 2px; }
