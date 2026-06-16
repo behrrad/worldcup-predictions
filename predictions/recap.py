@@ -1,8 +1,9 @@
 """
 Matchday recap — the data behind the end-of-day "story".
 
-A *matchday* is a calendar day (in settings.TIME_ZONE) on which at least one
-match finished. For one league and one matchday this module computes:
+A *matchday* is a calendar day (in the schedule's timezone). Its recap becomes
+available only once *every* match scheduled that day has finished — never while
+the day is still in progress. For one league and one matchday this module computes:
 
   * the day's results,
   * a personal summary for the viewer (points, hit breakdown, best call, and
@@ -78,31 +79,57 @@ def _best_score(scores):
     )
 
 
+def _matches_by_day(competition, qs=None):
+    """Group a competition's matches by their schedule-day (see _local_date)."""
+    qs = qs if qs is not None else Match.objects.filter(competition=competition)
+    by_date = defaultdict(list)
+    for m in qs:
+        by_date[_local_date(m.kickoff)].append(m)
+    return by_date
+
+
+def _complete_date_strs(by_date):
+    """Ascending date strings for days whose *every* scheduled match has finished.
+
+    A day's recap unlocks only once the whole day is in the books — not while
+    some of its matches are still to be played/scored.
+    """
+    return [
+        d.strftime(consts.RECAP_DATE_FORMAT)
+        for d in sorted(by_date)
+        if all(m.status == consts.MatchStatus.FINISHED for m in by_date[d])
+    ]
+
+
 def available_dates(competition):
-    """Ascending ISO dates (YYYY-MM-DD) that have at least one finished match."""
-    finished = Match.objects.filter(
-        competition=competition, status=consts.MatchStatus.FINISHED,
-    ).only("kickoff")
-    dates = sorted({_local_date(m.kickoff) for m in finished})
-    return [d.strftime(consts.RECAP_DATE_FORMAT) for d in dates]
+    """Ascending ISO dates (YYYY-MM-DD) whose every match has finished."""
+    by_date = _matches_by_day(
+        competition,
+        Match.objects.filter(competition=competition).only("kickoff", "status"),
+    )
+    return _complete_date_strs(by_date)
 
 
 def build_recap(league, viewer_membership, date_str=None):
     """Assemble the recap for one league + matchday.
 
     `date_str` (YYYY-MM-DD) selects the matchday; an unknown/missing value falls
-    back to the most recent finished day. Returns a dict the API layer
-    serializes — see module docstring for the shape. When no match has finished
-    yet, `date` is None and the day-specific sections are empty.
+    back to the most recent *complete* day (every match finished). Returns a dict
+    the API layer serializes — see module docstring for the shape. When no day is
+    complete yet, `date` is None and the day-specific sections are empty.
     """
     competition = league.competition
-    finished = list(
-        Match.objects.filter(
-            competition=competition, status=consts.MatchStatus.FINISHED,
-        ).select_related("home_team", "away_team")
+    by_date = _matches_by_day(
+        competition,
+        Match.objects.filter(competition=competition).select_related("home_team", "away_team"),
     )
-    match_date = {m.id: _local_date(m.kickoff) for m in finished}
-    dates = sorted({d.strftime(consts.RECAP_DATE_FORMAT) for d in match_date.values()})
+    # Scores only exist for finished matches; map those to their schedule-day.
+    match_date = {
+        m.id: d for d, ms in by_date.items() for m in ms
+        if m.status == consts.MatchStatus.FINISHED
+    }
+    # Only days whose every match has finished are selectable.
+    dates = _complete_date_strs(by_date)
 
     if not dates:
         return {"date": None, "available_dates": [], "matches": [],
@@ -110,9 +137,9 @@ def build_recap(league, viewer_membership, date_str=None):
 
     target = date_str if date_str in dates else dates[-1]
     target_date = datetime.strptime(target, consts.RECAP_DATE_FORMAT).date()
+    # The target day is complete, so all its matches are finished.
     day_matches = sorted(
-        (m for m in finished if match_date[m.id] == target_date),
-        key=lambda m: (m.kickoff, m.match_number or 0),
+        by_date[target_date], key=lambda m: (m.kickoff, m.match_number or 0),
     )
     day_match_ids = {m.id for m in day_matches}
 
