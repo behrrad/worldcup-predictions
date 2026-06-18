@@ -347,6 +347,23 @@ class LiveApiTests(APITestCase):
         self.assertEqual((entry["home"], entry["away"]), (0, 1))
         self.assertIn("name", entry["home_team"])
 
+    def test_live_endpoint_sends_match_events_after_a_refresh(self):
+        # A real refresh/finalize happened, so the polled /live/ endpoint also
+        # drives the Telegram match-event DMs (no dependency on the cron).
+        with mock.patch.object(live, "refresh_if_stale", return_value=True), \
+                mock.patch("predictions.telegram.run_match_events") as rme:
+            res = self.client.get(reverse("api_live_scores"))
+        self.assertEqual(res.status_code, 200)
+        rme.assert_called_once()
+
+    def test_live_endpoint_skips_match_events_when_nothing_refreshed(self):
+        # Nothing fetched this request (another poller holds the claim), so the
+        # send-heavy work is skipped — only the winner of a window does it.
+        with mock.patch.object(live, "refresh_if_stale", return_value=False), \
+                mock.patch("predictions.telegram.run_match_events") as rme:
+            self.client.get(reverse("api_live_scores"))
+        rme.assert_not_called()
+
     def test_finished_matches_never_listed(self):
         self._set_live(self.match, live_status=consts.LiveStatus.FULL_TIME)
         self.match.home_score, self.match.away_score = 0, 1
