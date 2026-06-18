@@ -705,11 +705,23 @@ def live_scores(request):
     taken over by then."""
     now = timezone.now()
     competitions = list(Competition.objects.filter(is_active=True))
+    changed = False
     for competition in competitions:
-        live.refresh_if_stale(competition, now)
+        if live.refresh_if_stale(competition, now):
+            changed = True
         # When a match looks over, pull the official result so it finalizes
         # (and everyone's points recompute) minutes after full time — no cron.
-        results_sync.finalize_if_due(competition, now)
+        if results_sync.finalize_if_due(competition, now):
+            changed = True
+    # Drive the live match-event DMs from here too: this endpoint is polled by
+    # every open client (~45s), so a goal / half-time / full-time reaches
+    # Telegram within a refresh window whenever anyone has the app open — not
+    # only when the external scheduler happens to fire. Gated on a real
+    # refresh/finalize (each already claim-limited to one upstream hit per
+    # window) so the send-heavy work runs at most once per window, however many
+    # clients are polling.
+    if changed:
+        telegram.run_match_events(now)
 
     matches = (
         Match.objects.filter(competition__in=competitions)
