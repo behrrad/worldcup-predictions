@@ -1,5 +1,6 @@
 from django.contrib import admin
 from unfold.admin import ModelAdmin, TabularInline
+from unfold.contrib.filters.admin import AutocompleteSelectFilter
 
 from . import consts, scoring
 from .models import (
@@ -126,9 +127,23 @@ class MembershipAdmin(ModelAdmin):
 @admin.register(Prediction)
 class PredictionAdmin(ModelAdmin):
     list_display = ("membership", "match", "predicted_home", "predicted_away", "updated_at")
-    list_filter = ("match__competition", "match__stage")
+    # Each row renders membership.__str__ (user + league) and match.__str__ (both
+    # teams). Without this, that's ~6 lazy queries per row (an N+1 that made the
+    # changelist slow); pull them all in one JOIN.
+    list_select_related = (
+        "membership__user", "membership__league",
+        "match__home_team", "match__away_team",
+    )
+    list_filter = (
+        "membership__user",                     # filter by user
+        ("match", AutocompleteSelectFilter),    # filter by a specific match (searchable)
+        "match__competition",
+        "match__stage",
+    )
     search_fields = ("membership__user__email", "membership__user__display_name")
     autocomplete_fields = ("membership", "match")
+    # The predictions table is the largest; skip the extra unfiltered COUNT(*).
+    show_full_result_count = False
 
 
 @admin.register(MatchScore)
