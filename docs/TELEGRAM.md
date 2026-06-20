@@ -6,8 +6,8 @@ default** once a member links — each switchable off on the profile page:
 1. **Prediction reminders** — a once-a-day **morning digest** of the day's
    still-open matches, plus a final **nudge** shortly before kickoff, to members
    who haven't predicted yet (`telegram_notify`).
-2. **Live match events** — **kickoff**, **goals**, **half-time** and
-   **full-time** for matches as they happen, personalized with the member's own
+2. **Live match events** — **kickoff**, **goals**, **half-time**, **second-half
+   kickoff** and **full-time** for matches as they happen, personalized with the member's own
    prediction and the points they earned (`telegram_notify_matches`). Far higher
    volume than the reminders, so it's the first thing to turn off if it's too
    chatty.
@@ -33,7 +33,7 @@ Sending (no webhook, no cron):
   → telegram.run_tick():
        1. poll_updates()        — drain bot updates (links /start, handles /stop)
        2. live.refresh_if_stale + results_sync.finalize_if_due (bonus: works w/o traffic)
-       3. run_match_events()    — DM kickoff/goal/HT/FT off the fresh live state
+       3. run_match_events()    — DM kickoff/goal/HT/2nd-half/FT off the fresh live state
        4. run_notifications()   — send due morning digests + pre-kickoff nudges
 ```
 
@@ -51,7 +51,7 @@ Sending (no webhook, no cron):
   completes within a couple of seconds of tapping Start.
 - **Idempotent.** Every DM is guarded by a `NotificationLog` row
   (`unique(user, kind, dedup_key)`): the digest is keyed by the local date, the
-  nudge / kickoff / half-time / full-time by the match id, and a **goal** by the
+  nudge / kickoff / half-time / second-half / full-time by the match id, and a **goal** by the
   scoreline (`"<match id>:<home>-<away>"`, so each new scoreline fires once). A
   failed send rolls its row back so it retries.
 - **Per-league locks are respected** (reminders): a user is only reminded about a

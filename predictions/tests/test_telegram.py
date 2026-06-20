@@ -324,6 +324,37 @@ class MatchEventTests(TestCase):
         self.assertTrue(NotificationLog.objects.filter(
             kind=consts.NotifyKind.HALFTIME, dedup_key=str(match.id)).exists())
 
+    def test_second_half_fires_when_clock_resumes(self):
+        now = timezone.now()
+        match = make_match(self.comp, kickoff=now - timedelta(hours=1))
+        self._predict(match, 1, 0)
+        _set_live(match, consts.LiveStatus.LIVE, home=1, away=0, minute="47")
+        _, texts = self._texts(now)
+        self.assertTrue(any(consts.TG_EVENT_SECONDHALF_TITLE in t for t in texts))
+        self.assertTrue(NotificationLog.objects.filter(
+            kind=consts.NotifyKind.SECOND_HALF, dedup_key=str(match.id)).exists())
+        # Fires once: a later second-half tick adds nothing new for this kind.
+        _set_live(match, consts.LiveStatus.LIVE, home=1, away=0, minute="55")
+        self._texts(now)
+        self.assertEqual(NotificationLog.objects.filter(
+            kind=consts.NotifyKind.SECOND_HALF, dedup_key=str(match.id)).count(), 1)
+
+    def test_no_second_half_during_first_half(self):
+        now = timezone.now()
+        match = make_match(self.comp, kickoff=now - timedelta(minutes=30))
+        _set_live(match, consts.LiveStatus.LIVE, home=0, away=0, minute="30")
+        self._texts(now)
+        self.assertFalse(
+            NotificationLog.objects.filter(kind=consts.NotifyKind.SECOND_HALF).exists())
+
+    def test_no_stale_second_half_deep_in_the_half(self):
+        now = timezone.now()
+        match = make_match(self.comp, kickoff=now - timedelta(hours=1))
+        _set_live(match, consts.LiveStatus.LIVE, home=1, away=1, minute="75")
+        self._texts(now)
+        self.assertFalse(
+            NotificationLog.objects.filter(kind=consts.NotifyKind.SECOND_HALF).exists())
+
     def test_fulltime_official_includes_points(self):
         now = timezone.now()
         match = make_match(self.comp, kickoff=now - timedelta(hours=2))

@@ -692,6 +692,7 @@ class NotifyKind:
     KICKOFF = "KICKOFF"     # dedup key: the match id
     GOAL = "GOAL"           # dedup key: "<match id>:<home>-<away>" (one per scoreline)
     HALFTIME = "HALFTIME"   # dedup key: the match id
+    SECOND_HALF = "SECONDHALF"  # dedup key: the match id
     FULLTIME = "FULLTIME"   # dedup key: the match id
 
 
@@ -701,16 +702,18 @@ NOTIFY_KIND_LABELS = {
     NotifyKind.KICKOFF: "شروع بازی",
     NotifyKind.GOAL: "گل",
     NotifyKind.HALFTIME: "پایان نیمهٔ اول",
+    NotifyKind.SECOND_HALF: "شروع نیمهٔ دوم",
     NotifyKind.FULLTIME: "پایان بازی",
 }
 NOTIFY_KIND_CHOICES = [(k, v) for k, v in NOTIFY_KIND_LABELS.items()]
 
 # Live match-event kinds, in the order events are emitted within one tick.
 NOTIFY_MATCH_EVENT_KINDS = (
-    NotifyKind.KICKOFF, NotifyKind.GOAL, NotifyKind.HALFTIME, NotifyKind.FULLTIME,
+    NotifyKind.KICKOFF, NotifyKind.GOAL, NotifyKind.HALFTIME,
+    NotifyKind.SECOND_HALF, NotifyKind.FULLTIME,
 )
 
-NOTIFY_KIND_MAX_LENGTH = 8
+NOTIFY_KIND_MAX_LENGTH = 12   # widest kind is "SECONDHALF" (10)
 NOTIFY_DEDUP_KEY_MAX_LENGTH = 40
 # A goal dedup key carries the scoreline: "<match id>:<home>-<away>".
 NOTIFY_GOAL_KEY = "{match_id}:{home}-{away}"
@@ -722,6 +725,11 @@ TELEGRAM_EVENT_WINDOW_HOURS = 4
 # next cron tick to catch it, short enough that a late opt-in / late live feed
 # doesn't get a stale "kickoff!" for a match already well underway.
 TELEGRAM_KICKOFF_GRACE_MINUTES = 20
+# The second-half DM fires once the live clock is back in play in this minute
+# range (the half resumes at 46'); the upper bound keeps it from firing stale,
+# deep into the half, when a match is only first observed mid-second-half.
+SECOND_HALF_MINUTE = 46
+SECOND_HALF_MINUTE_MAX = 60
 
 # -- Bot replies (sent to the user in the chat) ----------------------------- #
 TG_REPLY_LINKED = (
@@ -759,6 +767,7 @@ TG_EVENT_KICKOFF_TITLE = "🟢 <b>سوت شروع شد!</b>"
 # {clock} is " (دقیقهٔ X)" when a live minute is known, else empty.
 TG_EVENT_GOAL_TITLE = "⚽️ <b>گُل!</b>{clock}"
 TG_EVENT_HALFTIME_TITLE = "⏸ <b>پایان نیمهٔ اول</b>"
+TG_EVENT_SECONDHALF_TITLE = "🟢 <b>شروع نیمهٔ دوم!</b>"
 TG_EVENT_FULLTIME_TITLE = "🏁 <b>پایان بازی</b>"
 # Fixture line without a score (kickoff) and with one (goal/HT/FT).
 TG_EVENT_FIXTURE_LINE = "{hflag} {home} - {away} {aflag}"
