@@ -477,6 +477,13 @@ def _event_window_matches(now):
     )
 
 
+def _minute_value(minute) -> int:
+    """The base match-minute as an int (the number before any '+'), or -1 when
+    the live clock is missing/unparseable (e.g. "45+4" -> 45, "67" -> 67)."""
+    head = (minute or "").split("+", 1)[0].strip()
+    return int(head) if head.isdigit() else -1
+
+
 def _events_for(match, now):
     """The match-event entries this match currently warrants, each a dict with a
     `kind`, a dedup `key`, the rendering `phase`, and the score it carries. The
@@ -526,6 +533,19 @@ def _events_for(match, now):
             "hs": match.live_home_score, "as": match.live_away_score,
         })
 
+    # Second-half kickoff: back in play with the clock resumed in the second half
+    # (it restarts at 46'). Upper-bounded so a match first observed deep in the
+    # half doesn't get a stale "second half started".
+    if live == consts.LiveStatus.LIVE and (
+        consts.SECOND_HALF_MINUTE <= _minute_value(match.live_minute)
+        <= consts.SECOND_HALF_MINUTE_MAX
+    ):
+        events.append({
+            "kind": consts.NotifyKind.SECOND_HALF, "key": str(match.id),
+            "phase": consts.NotifyKind.SECOND_HALF,
+            "hs": match.live_home_score, "as": match.live_away_score,
+        })
+
     if over:
         # Prefer the official result (it carries the points members earned); fall
         # back to the live final when the official sync hasn't landed yet.
@@ -571,6 +591,8 @@ def _event_title(event) -> str:
         return consts.TG_EVENT_KICKOFF_TITLE
     if phase == consts.NotifyKind.HALFTIME:
         return consts.TG_EVENT_HALFTIME_TITLE
+    if phase == consts.NotifyKind.SECOND_HALF:
+        return consts.TG_EVENT_SECONDHALF_TITLE
     if phase == consts.NotifyKind.FULLTIME:
         return consts.TG_EVENT_FULLTIME_TITLE
     # The minute comes straight from the live provider, so escape it before it
