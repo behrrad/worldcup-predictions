@@ -28,6 +28,7 @@ urlpatterns = [
     path("leagues/<str:slug>/predictions/", api_views.submit_predictions, name="api_submit_predictions"),
     path("leagues/<str:slug>/leaderboard/", api_views.league_leaderboard, name="api_leaderboard"),
     path("leagues/<str:slug>/recap/", api_views.league_recap, name="api_league_recap"),
+    path("leagues/<str:slug>/fun-stats/", api_views.league_fun_stats, name="api_league_fun_stats"),
     # Public, key-gated results download (no Clerk auth; the key is the credential).
     path("export/<str:key>.xlsx", api_views.export_league, name="api_export_league"),
     # In-app admin: manual result entry (gated to admins inside the views).

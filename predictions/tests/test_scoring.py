@@ -265,7 +265,7 @@ class LiveLeaderboardTests(TestCase):
         m.home_score, m.away_score = 2, 1
         m.save()
 
-        table, is_live = scoring.live_leaderboard(self.league)
+        table, is_live, _live_matches = scoring.live_leaderboard(self.league)
         self.assertFalse(is_live)
         by_user = {row["membership"].id: row for row in table}
         row = by_user[self.a_mem.id]
@@ -289,7 +289,7 @@ class LiveLeaderboardTests(TestCase):
                                   predicted_home=1, predicted_away=0)
         self._go_live(playing, 1, 0)
 
-        table, is_live = scoring.live_leaderboard(self.league)
+        table, is_live, _live_matches = scoring.live_leaderboard(self.league)
         self.assertTrue(is_live)
         by_mem = {row["membership"].id: row for row in table}
         a, b = by_mem[self.a_mem.id], by_mem[self.b_mem.id]
@@ -312,7 +312,7 @@ class LiveLeaderboardTests(TestCase):
                                   predicted_home=3, predicted_away=0)
         self._go_live(playing, 3, 0, status=consts.LiveStatus.FULL_TIME)
 
-        table, is_live = scoring.live_leaderboard(self.league)
+        table, is_live, _live_matches = scoring.live_leaderboard(self.league)
         self.assertTrue(is_live)
         by_mem = {row["membership"].id: row for row in table}
         self.assertEqual(by_mem[self.a_mem.id]["live_points"], Decimal("10.00"))
@@ -327,7 +327,7 @@ class LiveLeaderboardTests(TestCase):
         m.home_score, m.away_score = 2, 0
         m.save()  # official result -> FINISHED + MatchScore
 
-        table, is_live = scoring.live_leaderboard(self.league)
+        table, is_live, _live_matches = scoring.live_leaderboard(self.league)
         self.assertFalse(is_live)
         by_mem = {row["membership"].id: row for row in table}
         row = by_mem[self.a_mem.id]

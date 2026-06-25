@@ -191,6 +191,28 @@ def leaderboard(league):
 # --------------------------------------------------------------------------- #
 # Live leaderboard — in-play scores played as if they were the final result
 # --------------------------------------------------------------------------- #
+def _fetch_live_data(league):
+    """Returns (live_matches, predictions_map) — shared by live_overlay and live_leaderboard."""
+    from .models import Match, Prediction
+
+    live_matches = list(
+        Match.objects.select_related("home_team", "away_team")
+        .filter(competition=league.competition)
+        .exclude(live_status=consts.LiveStatus.NONE)
+        .exclude(status=consts.MatchStatus.FINISHED)
+        .filter(live_home_score__isnull=False, live_away_score__isnull=False)
+    )
+    if not live_matches:
+        return [], {}
+    predictions = {
+        (p.membership_id, p.match_id): p
+        for p in Prediction.objects.filter(
+            match__in=live_matches, membership__league=league,
+        )
+    }
+    return live_matches, predictions
+
+
 def live_overlay(league):
     """
     Provisional extra points per membership from matches in play right now,
@@ -199,23 +221,11 @@ def live_overlay(league):
     caller knows there is nothing "live" to show. Display-only: nothing here
     is persisted, MatchScore rows still come only from official results.
     """
-    from .models import Match, Membership, Prediction
+    from .models import Membership
 
-    live_matches = list(
-        Match.objects.filter(competition=league.competition)
-        .exclude(live_status=consts.LiveStatus.NONE)
-        .exclude(status=consts.MatchStatus.FINISHED)
-        .filter(live_home_score__isnull=False, live_away_score__isnull=False)
-    )
+    live_matches, predictions = _fetch_live_data(league)
     if not live_matches:
         return {}
-
-    predictions = {
-        (p.membership_id, p.match_id): p
-        for p in Prediction.objects.filter(
-            match__in=live_matches, membership__league=league,
-        )
-    }
     overlay = {}
     member_ids = Membership.objects.filter(league=league).values_list("id", flat=True)
     for membership_id in member_ids:
@@ -233,16 +243,42 @@ def live_overlay(league):
 def live_leaderboard(league):
     """
     The official table with a live view layered on: every row also carries
-    live_points (the provisional delta from in-play matches), live_total and
-    live_rank. Returns (table, is_live); when nothing is live the live_*
-    fields simply mirror the official ones.
+    live_points (the provisional delta from in-play matches), live_total,
+    live_rank, and live_picks (per-live-match predictions for that member).
+    Returns (table, is_live, live_matches); when nothing is live the live_*
+    fields simply mirror the official ones and live_matches is empty.
     """
+    from .models import Membership
+
     table = leaderboard(league)
-    overlay = live_overlay(league)
+    live_matches, predictions = _fetch_live_data(league)
+
+    overlay = {}
+    if live_matches:
+        member_ids = list(Membership.objects.filter(league=league).values_list("id", flat=True))
+        for membership_id in member_ids:
+            total = Decimal("0.00")
+            for match in live_matches:
+                points, _tier = provisional_points(
+                    league, match, predictions.get((membership_id, match.id)),
+                    match.live_home_score, match.live_away_score,
+                )
+                total += points
+            overlay[membership_id] = total
+
     for row in table:
-        delta = overlay.get(row["membership"].id, Decimal("0.00"))
+        mid = row["membership"].id
+        delta = overlay.get(mid, Decimal("0.00"))
         row["live_points"] = delta
         row["live_total"] = row["total"] + delta
+        row["live_picks"] = [
+            {
+                "match_id": m.id,
+                "home": predictions[(mid, m.id)].predicted_home if (mid, m.id) in predictions else None,
+                "away": predictions[(mid, m.id)].predicted_away if (mid, m.id) in predictions else None,
+            }
+            for m in live_matches
+        ]
 
     ordered = sorted(
         table, key=lambda r: (-r["live_total"], r["membership"].joined_at),
@@ -254,4 +290,4 @@ def live_leaderboard(league):
             rank = i
             prev_total = row["live_total"]
         row["live_rank"] = rank
-    return table, bool(overlay)
+    return table, bool(overlay), live_matches

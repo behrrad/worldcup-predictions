@@ -121,6 +121,22 @@ export interface LeagueDetail {
   };
 }
 
+// One member's predicted score for a single live match (null when they didn't predict).
+export interface LivePickT {
+  match_id: number;
+  home: number | null;
+  away: number | null;
+}
+
+// Compact live-match descriptor used in the leaderboard's picks column.
+export interface LiveMatchInfo {
+  id: number;
+  home_team: TeamT | null;
+  away_team: TeamT | null;
+  live_home: number;
+  live_away: number;
+}
+
 export interface LeaderRow {
   rank: number;
   name: string;
@@ -134,12 +150,16 @@ export interface LeaderRow {
   live_rank: number;
   live_total: number;
   live_points: number;
+  // Per-live-match picks for this member (aligned with LeaderboardResp.live_matches).
+  live_picks: LivePickT[];
 }
 
 export interface LeaderboardResp {
   // True while at least one match is in play — the live view then differs
   // from the official one and the UI shows both tabs.
   is_live: boolean;
+  // In-play matches — empty when is_live is false.
+  live_matches: LiveMatchInfo[];
   rows: LeaderRow[];
 }
 
@@ -352,6 +372,65 @@ export interface RecapResp {
   me: RecapMe | null;
   general: RecapGeneral | null;
   scoreboard: RecapScoreRow[];
+}
+
+// ----- Fun / novelty stats ------------------------------------------------
+
+export interface FunMember {
+  name: string;
+  is_me: boolean;
+}
+
+export interface FunMemberCount extends FunMember {
+  count: number;
+}
+
+export interface FunMemberGoals extends FunMember {
+  avg_goals: number;
+}
+
+export interface FunMemberDraw extends FunMember {
+  count: number;
+  pct: number;
+}
+
+export interface FunMemberPct extends FunMember {
+  pct: number;
+}
+
+export interface FunMemberMargin extends FunMember {
+  avg_margin: number;
+}
+
+export interface FunBuddyPair {
+  name_a: string;
+  is_me_a: boolean;
+  name_b: string;
+  is_me_b: boolean;
+  match_count: number;
+  total: number;
+  pct: number;
+}
+
+export interface FunScore {
+  home: number;
+  away: number;
+  count: number;
+}
+
+export interface FunStatsResp {
+  has_data: boolean;
+  total_predictions?: number;
+  member_count?: number;
+  total_matches?: number;
+  most_active?: FunMemberCount[];
+  dream_goals?: FunMemberGoals[];
+  lone_wolf?: FunMemberCount[];
+  best_buddies?: FunBuddyPair[];
+  draw_kings?: FunMemberDraw[];
+  crowd_favorites?: FunScore[];
+  sheep_goat?: FunMemberPct[];
+  boldest?: FunMemberMargin[];
 }
 
 export interface MemberRow {
