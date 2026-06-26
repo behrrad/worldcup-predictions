@@ -219,7 +219,10 @@ def _annotate_averages(league, table):
             (row["total"] / played).quantize(_AVG, rounding=ROUND_HALF_UP)
             if played else Decimal("0.0000")
         )
-        row["eligible_for_avg"] = finished_count > 0 and played * 2 >= finished_count
+        row["eligible_for_avg"] = (
+            finished_count > 0
+            and played >= finished_count * consts.MIN_FINISHED_PARTICIPATION_RATIO
+        )
         row["avg_rank"] = None
 
     eligible = sorted(
