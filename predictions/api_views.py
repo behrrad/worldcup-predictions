@@ -20,7 +20,7 @@ from rest_framework.permissions import AllowAny
 from rest_framework.response import Response
 
 from accounts import consts as acc_consts
-from . import consts, export, live, recap, results_sync, scoring, telegram
+from . import consts, export, fun_stats, live, recap, results_sync, scoring, telegram
 from .models import (
     Competition,
     League,
@@ -579,11 +579,21 @@ def submit_predictions(request, slug):
 @api_view(["GET"])
 def league_leaderboard(request, slug):
     membership = _get_membership(request, slug)
-    rows, is_live = scoring.live_leaderboard(membership.league)
+    rows, is_live, live_matches = scoring.live_leaderboard(membership.league)
     return Response({
         # True while at least one match carries in-play state: the live_*
         # fields then differ from the official ones and deserve their own tab.
         "is_live": is_live,
+        "live_matches": [
+            {
+                "id": m.id,
+                "home_team": _team(m.home_team),
+                "away_team": _team(m.away_team),
+                "live_home": m.live_home_score,
+                "live_away": m.live_away_score,
+            }
+            for m in live_matches
+        ],
         "rows": [
             {
                 "rank": row["rank"],
@@ -595,10 +605,18 @@ def league_leaderboard(request, slug):
                 "live_rank": row["live_rank"],
                 "live_total": float(row["live_total"]),
                 "live_points": float(row["live_points"]),
+                "live_picks": row["live_picks"],
             }
             for row in rows
         ],
     })
+
+
+@api_view(["GET"])
+def league_fun_stats(request, slug):
+    membership = _get_membership(request, slug)
+    data = fun_stats.build_fun_stats(membership.league, request.user.id)
+    return Response(data)
 
 
 @api_view(["GET"])

@@ -265,7 +265,7 @@ class LiveLeaderboardTests(TestCase):
         m.home_score, m.away_score = 2, 1
         m.save()
 
-        table, is_live = scoring.live_leaderboard(self.league)
+        table, is_live, _live_matches = scoring.live_leaderboard(self.league)
         self.assertFalse(is_live)
         by_user = {row["membership"].id: row for row in table}
         row = by_user[self.a_mem.id]
@@ -289,7 +289,7 @@ class LiveLeaderboardTests(TestCase):
                                   predicted_home=1, predicted_away=0)
         self._go_live(playing, 1, 0)
 
-        table, is_live = scoring.live_leaderboard(self.league)
+        table, is_live, _live_matches = scoring.live_leaderboard(self.league)
         self.assertTrue(is_live)
         by_mem = {row["membership"].id: row for row in table}
         a, b = by_mem[self.a_mem.id], by_mem[self.b_mem.id]
@@ -312,7 +312,7 @@ class LiveLeaderboardTests(TestCase):
                                   predicted_home=3, predicted_away=0)
         self._go_live(playing, 3, 0, status=consts.LiveStatus.FULL_TIME)
 
-        table, is_live = scoring.live_leaderboard(self.league)
+        table, is_live, _live_matches = scoring.live_leaderboard(self.league)
         self.assertTrue(is_live)
         by_mem = {row["membership"].id: row for row in table}
         self.assertEqual(by_mem[self.a_mem.id]["live_points"], Decimal("10.00"))
@@ -327,10 +327,33 @@ class LiveLeaderboardTests(TestCase):
         m.home_score, m.away_score = 2, 0
         m.save()  # official result -> FINISHED + MatchScore
 
-        table, is_live = scoring.live_leaderboard(self.league)
+        table, is_live, _live_matches = scoring.live_leaderboard(self.league)
         self.assertFalse(is_live)
         by_mem = {row["membership"].id: row for row in table}
         row = by_mem[self.a_mem.id]
         self.assertEqual(row["total"], Decimal("10.00"))
         self.assertEqual(row["live_total"], Decimal("10.00"))
         self.assertEqual(row["live_points"], Decimal("0.00"))
+
+    def test_live_picks_align_with_live_matches(self):
+        # Each row's live_picks must be 1:1 with the returned live_matches, with
+        # None for members who didn't predict an in-play match.
+        playing = make_match(self.comp)
+        Prediction.objects.create(membership=self.a_mem, match=playing,
+                                  predicted_home=1, predicted_away=0)
+        # b_mem deliberately does not predict this match.
+        self._go_live(playing, 1, 0)
+
+        table, is_live, live_matches = scoring.live_leaderboard(self.league)
+        self.assertTrue(is_live)
+        self.assertEqual([m.id for m in live_matches], [playing.id])
+
+        by_mem = {row["membership"].id: row for row in table}
+        self.assertEqual(
+            by_mem[self.a_mem.id]["live_picks"],
+            [{"match_id": playing.id, "home": 1, "away": 0}],
+        )
+        self.assertEqual(
+            by_mem[self.b_mem.id]["live_picks"],
+            [{"match_id": playing.id, "home": None, "away": None}],
+        )

@@ -542,3 +542,57 @@ button.tab { cursor: pointer; font: inherit; font-weight: 600; }
 .rank-move.up { color: #14893c; }
 .rank-move.down { color: var(--red); }
 .live-note { margin: 12px 4px 0; font-size: 0.82rem; }
+
+/* Live picks column in the leaderboard live view */
+.live-picks-cell { white-space: nowrap; }
+.pick-badge {
+  display: inline-flex; align-items: center; gap: 2px;
+  padding: 2px 7px; border-radius: 999px; font-size: 0.78rem; font-weight: 700;
+  margin: 1px 2px; border: 1px solid transparent;
+}
+.pick-badge--exact  { background: var(--green-tint); color: var(--green-ink); border-color: var(--green); }
+.pick-badge--diff   { background: var(--blue-tint);  color: var(--blue-ink);  border-color: var(--blue); }
+.pick-badge--winner { background: var(--gold-tint);  color: var(--gold-ink);  border-color: var(--gold); }
+.pick-badge--wrong  { background: color-mix(in srgb, var(--red) 12%, transparent); color: var(--red); border-color: var(--red); }
+.pick-badge--none   { background: var(--surface-2); color: var(--muted); border-color: transparent; }
+
+/* ---- Fun stats page ---- */
+.fun-stats { margin-top: 0; }
+.fun-subtitle { font-size: 0.83rem; margin: -8px 0 14px; }
+.fs-icon { font-size: 1.2rem; }
+
+.fun-ranked-list { list-style: none; padding: 0; margin: 0; display: flex; flex-direction: column; gap: 6px; }
+.fun-ranked-item {
+  display: flex; align-items: center; gap: 10px;
+  padding: 7px 10px; border-radius: 10px;
+  background: var(--surface-2); font-size: 0.88rem;
+}
+.fun-ranked-item.me-row { background: var(--gold-tint); }
+.fun-ranked-item.fun-top { background: var(--green-tint); color: var(--green-ink); font-weight: 700; }
+.fun-ranked-item.me-row.fun-top { background: color-mix(in srgb, var(--gold-tint) 60%, var(--green-tint)); }
+
+.fun-rank { min-width: 22px; text-align: center; font-weight: 800; color: var(--muted); font-size: 0.8rem; }
+.fun-name { flex: 1; }
+.fun-me { font-weight: 700; }
+.fun-value { font-weight: 700; font-family: var(--display); color: var(--ink); white-space: nowrap; }
+
+.fun-section-label { font-size: 0.78rem; color: var(--muted); font-weight: 700; margin: 0 0 6px; }
+
+.fun-buddy-names { display: flex; align-items: center; gap: 4px; flex-wrap: wrap; }
+.fun-buddy-sep { color: var(--muted); font-weight: 400; }
+
+/* Crowd favorites */
+.fun-scores-grid { display: flex; flex-wrap: wrap; gap: 8px; }
+.fun-score-pill {
+  position: relative; overflow: hidden;
+  padding: 6px 14px; border-radius: 999px; border: 1px solid var(--line);
+  background: var(--surface-2); font-size: 0.88rem; display: flex; align-items: center; gap: 8px;
+  min-width: 80px;
+}
+.fun-score-pill.fun-score-top { background: var(--gold-tint); border-color: var(--gold); }
+.fun-score-line { font-family: var(--display); font-weight: 700; font-size: 1rem; }
+.fun-score-count { color: var(--muted); font-size: 0.78rem; }
+.fun-score-bar {
+  position: absolute; inset-inline-start: 0; bottom: 0; height: 3px;
+  background: var(--gold-soft); border-radius: 0 999px 999px 0;
+}

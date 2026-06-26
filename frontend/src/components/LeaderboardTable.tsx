@@ -3,9 +3,49 @@
 import { useState } from "react";
 
 import { fa } from "@/lib/format";
-import type { LeaderboardResp } from "@/lib/types";
+import type { LeaderboardResp, LiveMatchInfo, LivePickT } from "@/lib/types";
 
 const MEDAL: Record<number, string> = { 1: "🥇", 2: "🥈", 3: "🥉" };
+
+/** Returns a CSS class name reflecting the match tier at the current live score. */
+function pickTier(
+  pick: LivePickT,
+  liveHome: number,
+  liveAway: number,
+): "exact" | "diff" | "winner" | "wrong" | "none" {
+  if (pick.home === null || pick.away === null) return "none";
+  if (pick.home === liveHome && pick.away === liveAway) return "exact";
+  const pickDiff = pick.home - pick.away;
+  const liveDiff = liveHome - liveAway;
+  if (pickDiff === liveDiff) return "diff";
+  const pickSign = Math.sign(pick.home - pick.away);
+  const liveSign = Math.sign(liveHome - liveAway);
+  if (pickSign === liveSign) return "winner";
+  return "wrong";
+}
+
+/** Compact badge showing one member's pick for a single live match. */
+function PickBadge({
+  pick,
+  match,
+}: {
+  pick: LivePickT;
+  match: LiveMatchInfo;
+}) {
+  const tier = pickTier(pick, match.live_home, match.live_away);
+  const home = match.home_team;
+  const away = match.away_team;
+
+  return (
+    <span className={`pick-badge pick-badge--${tier}`} title={`${home?.name ?? "؟"} - ${away?.name ?? "؟"}`}>
+      {home?.flag ?? "🏳️"}
+      {pick.home !== null ? fa(pick.home) : "؟"}
+      {"-"}
+      {pick.away !== null ? fa(pick.away) : "؟"}
+      {away?.flag ?? "🏳️"}
+    </span>
+  );
+}
 
 /**
  * The scoreboard with two views. «جدول رسمی» ranks by officially-recorded
@@ -24,6 +64,8 @@ export default function LeaderboardTable({ board }: { board: LeaderboardResp }) 
   const rows = [...board.rows].sort((a, b) =>
     live ? a.live_rank - b.live_rank : a.rank - b.rank,
   );
+
+  const liveMatches = board.live_matches ?? [];
 
   return (
     <>
@@ -55,6 +97,9 @@ export default function LeaderboardTable({ board }: { board: LeaderboardResp }) 
               <th>بازی‌ها</th>
               <th>نتیجهٔ دقیق</th>
               <th>{live ? "امتیاز زنده" : "امتیاز"}</th>
+              {live && liveMatches.length > 0 && (
+                <th>پیش‌بینی بازی‌های جاری</th>
+              )}
             </tr>
           </thead>
           <tbody>
@@ -90,12 +135,23 @@ export default function LeaderboardTable({ board }: { board: LeaderboardResp }) 
                         <span className="live-delta">{fa(r.live_points)}+</span>
                       )}
                     </td>
+                    {live && liveMatches.length > 0 && (
+                      <td className="live-picks-cell">
+                        {liveMatches.map((m, i) => {
+                          const pick = r.live_picks?.[i];
+                          if (!pick) return null;
+                          return (
+                            <PickBadge key={m.id} pick={pick} match={m} />
+                          );
+                        })}
+                      </td>
+                    )}
                   </tr>
                 );
               })
             ) : (
               <tr>
-                <td colSpan={5} className="empty">
+                <td colSpan={live && liveMatches.length > 0 ? 6 : 5} className="empty">
                   هنوز امتیازی ثبت نشده است.
                 </td>
               </tr>
