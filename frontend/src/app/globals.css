@@ -596,3 +596,49 @@ button.tab { cursor: pointer; font: inherit; font-weight: 600; }
   position: absolute; inset-inline-start: 0; bottom: 0; height: 3px;
   background: var(--gold-soft); border-radius: 0 999px 999px 0;
 }
+
+/* ---------- Progression chart (points/rank lines + player toggles) ---------- */
+.prog-toolbar { display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap; margin-bottom: 18px; }
+.prog-actions { display: flex; gap: 8px; flex-wrap: wrap; }
+.prog-chart-card { padding: 16px 16px 10px; }
+.prog-wrap { position: relative; width: 100%; }
+.prog-svg { width: 100%; height: auto; display: block; overflow: visible; }
+.prog-svg text { font-family: var(--font-vazir), system-ui, sans-serif; }
+.prog-axis-note { font-size: 0.8rem; margin: 8px 2px 4px; text-align: center; }
+
+/* hover tooltip (positioned in % of the chart box, anchored above the cursor) */
+.prog-tip {
+  position: absolute; pointer-events: none; z-index: 6;
+  transform: translate(-50%, calc(-100% - 12px));
+  background: var(--ink); color: #fff; border-radius: 12px;
+  padding: 9px 12px; box-shadow: var(--shadow); min-width: 132px;
+  font-size: 0.82rem; line-height: 1.5;
+}
+[data-theme="dark"] .prog-tip { background: #120f17; border: 1px solid var(--line); }
+.prog-tip-title { font-weight: 800; margin-bottom: 6px; white-space: nowrap; }
+.prog-tip-row { display: flex; align-items: center; gap: 7px; }
+.prog-tip-name { flex: 1; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 150px; }
+.prog-tip-val { font-family: var(--display); font-weight: 400; }
+.prog-swatch { width: 10px; height: 10px; border-radius: 3px; flex-shrink: 0; }
+
+/* legend = the player checkboxes (a coloured box that doubles as the swatch) */
+.prog-legend-card { margin-top: 18px; }
+.prog-legend-hint { font-size: 0.85rem; margin: 0 0 12px; }
+.prog-legend { display: flex; flex-wrap: wrap; gap: 9px; }
+.prog-chip {
+  display: inline-flex; align-items: center; gap: 8px;
+  padding: 7px 13px; border-radius: 999px; cursor: pointer;
+  border: 1px solid var(--line); background: var(--surface);
+  font-family: inherit; font-weight: 700; font-size: 0.88rem;
+  color: var(--ink); transition: 0.15s;
+}
+.prog-chip:hover { border-color: var(--line-strong); transform: translateY(-1px); }
+.prog-chip.off { color: var(--muted); }
+.prog-chip .prog-box {
+  width: 17px; height: 17px; border-radius: 5px; flex-shrink: 0;
+  border: 1.5px solid var(--line-strong);
+  display: inline-flex; align-items: center; justify-content: center;
+  color: #fff; font-size: 11px; font-weight: 900; line-height: 1;
+}
+.prog-chip-rank { font-family: var(--display); font-weight: 400; font-size: 0.95rem; }
+.prog-chip:focus-visible { outline: 2px solid var(--red); outline-offset: 2px; }

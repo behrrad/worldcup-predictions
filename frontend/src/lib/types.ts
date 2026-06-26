@@ -439,6 +439,47 @@ export interface FunStatsResp {
   boldest?: FunMemberMargin[];
 }
 
+// ----- Points & rank progression (the player-toggle line chart) ------------
+// One finished match = one x-axis step. Same compact fixture as the recap, plus
+// the match number; home/away scores are filled in (a step is always finished).
+export interface ProgressionStep extends RecapMatchMini {
+  match_number: number | null;
+}
+
+// One player's series. `totals`/`ranks`/`match_points` are aligned with
+// ProgressionResp.steps: index i is the state *after* the i-th finished match.
+// `total`/`rank` are the final standing (last step), or 0/null before any match.
+export interface ProgressionPlayer {
+  id: number;
+  name: string;
+  is_me: boolean;
+  totals: number[];
+  ranks: number[];
+  match_points: number[];
+  // Cumulative predictions made per step — the average view's denominator
+  // (average[i] = totals[i] / played[i]; played 0 → treat the average as 0).
+  played: number[];
+  total: number;
+  rank: number | null;
+}
+
+export interface ProgressionResp {
+  steps: ProgressionStep[];
+  players: ProgressionPlayer[];
+}
+
+// A single player's average points-per-prediction over time (the profile chart).
+// On a profile it pools the player's predictions across every league; the same
+// shape backs the league chart's per-player average. All arrays align with steps.
+export interface PlayerAverageResp {
+  steps: ProgressionStep[];
+  series: {
+    totals: number[];
+    played: number[];
+    averages: number[];
+  };
+}
+
 export interface MemberRow {
   rank: number;
   id: number;

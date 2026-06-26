@@ -717,6 +717,64 @@ def league_recap(request, slug):
 
 
 @api_view(["GET"])
+def league_progression(request, slug):
+    """How every member's points and rank moved match by match.
+
+    Returns the finished matches in chronological order (`steps`) and, per
+    member, their cumulative total and rank *after* each of those matches
+    (`totals`/`ranks`, aligned with `steps`) plus the points earned on each one
+    (`match_points`). The frontend draws a line per player and lets the viewer
+    toggle which players (and points-vs-rank) are shown."""
+    membership = _get_membership(request, slug)
+    steps, players = scoring.progression(membership.league)
+    return Response({
+        "steps": [
+            {**_recap_match_mini(m), "match_number": m.match_number}
+            for m in steps
+        ],
+        "players": [
+            {
+                "id": p["membership"].user_id,
+                "name": p["membership"].user.public_name,
+                "is_me": p["membership"].user_id == request.user.id,
+                "totals": [float(t) for t in p["totals"]],
+                "ranks": p["ranks"],
+                "match_points": [float(x) for x in p["match_points"]],
+                # Cumulative predictions-made per step — the average view divides
+                # totals by this (games predicted, not finished-but-skipped).
+                "played": p["played"],
+                # Final standing (last step), surfaced so the UI can sort the
+                # player list and seed the default selection without re-deriving it.
+                "total": float(p["totals"][-1]) if p["totals"] else 0.0,
+                "rank": p["ranks"][-1] if p["ranks"] else None,
+            }
+            for p in players
+        ],
+    })
+
+
+@api_view(["GET"])
+def player_average(request, user_id):
+    """A player's average points-per-prediction over time, pooled across every
+    league they're in — the profile-page chart. Same visibility as the public
+    profile (player_detail): it exposes only an aggregate curve, no per-league
+    breakdown or individual picks."""
+    user = get_object_or_404(User, id=user_id, is_active=True)
+    steps, series = scoring.user_average_series(user)
+    return Response({
+        "steps": [
+            {**_recap_match_mini(m), "match_number": m.match_number}
+            for m in steps
+        ],
+        "series": {
+            "totals": [float(t) for t in series["totals"]],
+            "played": series["played"],
+            "averages": [round(float(a), 2) for a in series["averages"]],
+        },
+    })
+
+
+@api_view(["GET"])
 def live_scores(request):
     """Current in-play scores across the active competitions.
 

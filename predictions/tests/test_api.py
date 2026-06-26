@@ -659,6 +659,122 @@ class LeagueMembersTests(AuthedTestCase):
         self.assertEqual(res.status_code, 404)
 
 
+class ProgressionApiTests(AuthedTestCase):
+    """The points/rank progression feed: cumulative totals and ranks replayed
+    match by match, one aligned series per member."""
+
+    def setUp(self):
+        super().setUp()
+        self.league = make_league(self.comp, owner=self.user)  # self.user is owner
+        self.me = Membership.objects.get(league=self.league, user=self.user)
+        self.other = join(self.league)
+        self.now = timezone.now()
+
+    def _body(self):
+        return self.client.get(
+            reverse("api_league_progression", args=[self.league.slug])
+        ).json()
+
+    def _player(self, body, *, is_me):
+        return next(p for p in body["players"] if p["is_me"] is is_me)
+
+    def test_empty_until_a_match_finishes(self):
+        # No finished matches yet: no steps, members present with empty series.
+        make_match(self.comp, kickoff=self.now + timedelta(days=1))
+        body = self._body()
+        self.assertEqual(body["steps"], [])
+        self.assertEqual(len(body["players"]), 2)
+        me = self._player(body, is_me=True)
+        self.assertEqual(me["totals"], [])
+        self.assertIsNone(me["rank"])
+
+    def test_cumulative_totals_and_ranks_move_per_match(self):
+        # Two finished matches in chronological order. I nail the first exactly;
+        # the other member nails the second — so we swap from a clear lead to a tie.
+        m1 = make_match(self.comp, kickoff=self.now - timedelta(days=2))
+        m2 = make_match(self.comp, kickoff=self.now - timedelta(days=1))
+        Prediction.objects.create(membership=self.me, match=m1, predicted_home=2, predicted_away=1)
+        Prediction.objects.create(membership=self.other, match=m2, predicted_home=1, predicted_away=0)
+        # Saving each result triggers the scoring recompute for every member.
+        m1.home_score, m1.away_score = 2, 1
+        m1.save()
+        m2.home_score, m2.away_score = 1, 0
+        m2.save()
+
+        body = self._body()
+        # Steps are the finished matches, oldest first.
+        self.assertEqual(len(body["steps"]), 2)
+        self.assertEqual(body["steps"][0]["home_score"], 2)
+        self.assertEqual(body["steps"][1]["home_score"], 1)
+
+        me = self._player(body, is_me=True)
+        other = self._player(body, is_me=False)
+        # I lead after match 1, then the other catches up to a tie after match 2.
+        self.assertEqual(me["match_points"], [10.0, 0.0])
+        self.assertEqual(me["totals"], [10.0, 10.0])
+        # Ties share a rank (tie-broken by join order), so I keep the shared lead.
+        self.assertEqual(me["ranks"], [1, 1])
+        self.assertEqual(other["match_points"], [0.0, 10.0])
+        self.assertEqual(other["totals"], [0.0, 10.0])
+        self.assertEqual(other["ranks"], [2, 1])  # the other climbs into the tie
+        # `played` counts only matches each member actually predicted (the
+        # average's denominator): I predicted m1 only, the other m2 only.
+        self.assertEqual(me["played"], [1, 1])
+        self.assertEqual(other["played"], [0, 1])
+        # Final standing fields mirror the last step.
+        self.assertEqual(me["total"], 10.0)
+
+    def test_non_member_gets_404(self):
+        league = make_league(self.comp)  # owned by someone else
+        res = self.client.get(reverse("api_league_progression", args=[league.slug]))
+        self.assertEqual(res.status_code, 404)
+
+
+class PlayerAverageApiTests(AuthedTestCase):
+    """The profile chart: a player's average points-per-prediction over time,
+    pooled across every league they belong to."""
+
+    def test_empty_when_no_finished_predictions(self):
+        body = self.client.get(
+            reverse("api_player_average", args=[self.user.id])
+        ).json()
+        self.assertEqual(body["steps"], [])
+        self.assertEqual(body["series"]["averages"], [])
+
+    def test_average_pools_predictions_across_leagues(self):
+        now = timezone.now()
+        a = make_league(self.comp, owner=self.user, name="لیگ آ")
+        b = make_league(self.comp, owner=self.user, name="لیگ ب")
+        ma = Membership.objects.get(league=a, user=self.user)
+        mb = Membership.objects.get(league=b, user=self.user)
+        m1 = make_match(self.comp, kickoff=now - timedelta(days=2))
+        m2 = make_match(self.comp, kickoff=now - timedelta(days=1))
+        # m1: exact in both leagues (10 + 10).
+        Prediction.objects.create(membership=ma, match=m1, predicted_home=2, predicted_away=1)
+        Prediction.objects.create(membership=mb, match=m1, predicted_home=2, predicted_away=1)
+        # m2: exact in A (10), winner-only in B (5).
+        Prediction.objects.create(membership=ma, match=m2, predicted_home=1, predicted_away=0)
+        Prediction.objects.create(membership=mb, match=m2, predicted_home=2, predicted_away=0)
+        m1.home_score, m1.away_score = 2, 1
+        m1.save()
+        m2.home_score, m2.away_score = 1, 0
+        m2.save()
+
+        body = self.client.get(
+            reverse("api_player_average", args=[self.user.id])
+        ).json()
+        self.assertEqual(len(body["steps"]), 2)
+        # Each league is its own prediction: 2 after m1, 4 after m2.
+        self.assertEqual(body["series"]["played"], [2, 4])
+        self.assertEqual(body["series"]["totals"], [20.0, 35.0])
+        # Pooled mean: 20/2 = 10.0, then 35/4 = 8.75.
+        self.assertEqual(body["series"]["averages"], [10.0, 8.75])
+
+    def test_unknown_player_404(self):
+        res = self.client.get(reverse("api_player_average", args=[999999]))
+        self.assertEqual(res.status_code, 404)
+
+
 class AllPredictionsApiTests(AuthedTestCase):
     """The 'Everyone's predictions' board aggregates picks across all matches,
     honouring the same per-match reveal rules as the match-detail view."""
