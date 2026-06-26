@@ -574,7 +574,7 @@ button.tab { cursor: pointer; font: inherit; font-weight: 600; }
 .fun-rank { min-width: 22px; text-align: center; font-weight: 800; color: var(--muted); font-size: 0.8rem; }
 .fun-name { flex: 1; }
 .fun-me { font-weight: 700; }
-.fun-value { font-weight: 700; font-family: var(--display); color: var(--text); white-space: nowrap; }
+.fun-value { font-weight: 700; font-family: var(--display); color: var(--ink); white-space: nowrap; }
 
 .fun-section-label { font-size: 0.78rem; color: var(--muted); font-weight: 700; margin: 0 0 6px; }
 

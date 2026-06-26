@@ -103,8 +103,11 @@ def build_fun_stats(league, viewer_user_id):
     buddy_rows = []
     for i, mid_a in enumerate(member_ids):
         for mid_b in member_ids[i + 1:]:
-            picks_a = {p.match_id: (p.predicted_home, p.predicted_away) for p in by_member[mid_a]}
-            picks_b = {p.match_id: (p.predicted_home, p.predicted_away) for p in by_member[mid_b]}
+            # .get() (not by_member[mid]) — indexing a defaultdict would insert an
+            # empty list for members who never predicted, and later sections divide
+            # by len(ps), hitting ZeroDivisionError.
+            picks_a = {p.match_id: (p.predicted_home, p.predicted_away) for p in by_member.get(mid_a, [])}
+            picks_b = {p.match_id: (p.predicted_home, p.predicted_away) for p in by_member.get(mid_b, [])}
             shared = set(picks_a.keys()) & set(picks_b.keys())
             if not shared:
                 continue
