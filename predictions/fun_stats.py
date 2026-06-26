@@ -14,6 +14,8 @@ Eight stats:
 """
 from collections import Counter, defaultdict
 
+from . import consts
+
 
 def build_fun_stats(league, viewer_user_id):
     from .models import Membership, Prediction
@@ -109,7 +111,10 @@ def build_fun_stats(league, viewer_user_id):
             picks_a = {p.match_id: (p.predicted_home, p.predicted_away) for p in by_member.get(mid_a, [])}
             picks_b = {p.match_id: (p.predicted_home, p.predicted_away) for p in by_member.get(mid_b, [])}
             shared = set(picks_a.keys()) & set(picks_b.keys())
-            if not shared:
+            # Require a floor of shared predictions: otherwise a pair that
+            # matched on its single overlapping game shows up at 100% and
+            # crowds out genuinely similar members.
+            if len(shared) < consts.FUN_STATS_MIN_BUDDY_MATCHES:
                 continue
             match_count = sum(1 for m in shared if picks_a[m] == picks_b[m])
             buddy_rows.append({

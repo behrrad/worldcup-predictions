@@ -606,6 +606,10 @@ def league_leaderboard(request, slug):
                 "live_total": float(row["live_total"]),
                 "live_points": float(row["live_points"]),
                 "live_picks": row["live_picks"],
+                # Points-per-game view (members who predicted ≥50% of finished games).
+                "avg_points": float(row["avg_points"]),
+                "avg_rank": row["avg_rank"],
+                "eligible_for_avg": row["eligible_for_avg"],
             }
             for row in rows
         ],

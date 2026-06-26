@@ -87,6 +87,15 @@ DEFAULT_REVEAL_PREDICTIONS = True
 
 
 # --------------------------------------------------------------------------- #
+# Fun stats (the «آمار جالب» tab)
+# --------------------------------------------------------------------------- #
+# A "best buddies" pair only qualifies once it has at least this many shared
+# predictions. Without a floor, any pair that matched on a single shared game
+# shows up at 100%, drowning out genuinely similar members.
+FUN_STATS_MIN_BUDDY_MATCHES = 5
+
+
+# --------------------------------------------------------------------------- #
 # Scoring tiers (used to label *why* a prediction earned its points)
 # --------------------------------------------------------------------------- #
 class Tier:

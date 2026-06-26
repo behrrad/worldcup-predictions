@@ -48,29 +48,37 @@ function PickBadge({
 }
 
 /**
- * The scoreboard with two views. «جدول رسمی» ranks by officially-recorded
+ * The scoreboard with three views. «جدول رسمی» ranks by officially-recorded
  * points only; «جدول زنده» (shown — and preselected — only while a match is
  * in play) plays the current live score as if it were the final result, so
- * everyone can watch the standings move goal by goal. Live points are
- * provisional: once the official result lands, the official table takes over.
+ * everyone can watch the standings move goal by goal (live points are
+ * provisional — once the official result lands, the official table takes over).
+ * «میانگین امتیاز» ranks by average points per predicted game (4 decimals),
+ * limited to members who predicted at least half of the finished matches.
  * Data refreshes via the LiveScores strip's router.refresh on every goal.
  */
 export default function LeaderboardTable({ board }: { board: LeaderboardResp }) {
-  const [view, setView] = useState<"official" | "live">(
+  const [view, setView] = useState<"official" | "live" | "average">(
     board.is_live ? "live" : "official",
   );
   const live = view === "live" && board.is_live;
+  const average = view === "average";
 
-  const rows = [...board.rows].sort((a, b) =>
-    live ? a.live_rank - b.live_rank : a.rank - b.rank,
-  );
+  const rows = average
+    ? [...board.rows]
+        .filter((r) => r.eligible_for_avg)
+        .sort((a, b) => (a.avg_rank ?? 0) - (b.avg_rank ?? 0))
+    : [...board.rows].sort((a, b) =>
+        live ? a.live_rank - b.live_rank : a.rank - b.rank,
+      );
 
   const liveMatches = board.live_matches ?? [];
+  const colCount = average ? 5 : live && liveMatches.length > 0 ? 6 : 5;
 
   return (
     <>
-      {board.is_live && (
-        <div className="section-tabs">
+      <div className="section-tabs">
+        {board.is_live && (
           <button
             type="button"
             className={`tab ${live ? "active" : ""}`}
@@ -78,15 +86,22 @@ export default function LeaderboardTable({ board }: { board: LeaderboardResp }) 
           >
             <span className="live-dot" /> جدول زنده
           </button>
-          <button
-            type="button"
-            className={`tab ${!live ? "active" : ""}`}
-            onClick={() => setView("official")}
-          >
-            جدول رسمی
-          </button>
-        </div>
-      )}
+        )}
+        <button
+          type="button"
+          className={`tab ${view === "official" ? "active" : ""}`}
+          onClick={() => setView("official")}
+        >
+          جدول رسمی
+        </button>
+        <button
+          type="button"
+          className={`tab ${average ? "active" : ""}`}
+          onClick={() => setView("average")}
+        >
+          میانگین امتیاز
+        </button>
+      </div>
 
       <div className="card">
         <table className="table">
@@ -95,17 +110,30 @@ export default function LeaderboardTable({ board }: { board: LeaderboardResp }) 
               <th>رتبه</th>
               <th>نام</th>
               <th>بازی‌ها</th>
-              <th>نتیجهٔ دقیق</th>
-              <th>{live ? "امتیاز زنده" : "امتیاز"}</th>
-              {live && liveMatches.length > 0 && (
-                <th>پیش‌بینی بازی‌های جاری</th>
+              {average ? (
+                <>
+                  <th>امتیاز کل</th>
+                  <th>میانگین هر بازی</th>
+                </>
+              ) : (
+                <>
+                  <th>نتیجهٔ دقیق</th>
+                  <th>{live ? "امتیاز زنده" : "امتیاز"}</th>
+                  {live && liveMatches.length > 0 && (
+                    <th>پیش‌بینی بازی‌های جاری</th>
+                  )}
+                </>
               )}
             </tr>
           </thead>
           <tbody>
             {rows.length > 0 ? (
               rows.map((r) => {
-                const rank = live ? r.live_rank : r.rank;
+                const rank = average
+                  ? r.avg_rank ?? 0
+                  : live
+                    ? r.live_rank
+                    : r.rank;
                 const moved = live ? r.rank - r.live_rank : 0;
                 return (
                   <tr key={r.name} className={r.is_me ? "me-row" : undefined}>
@@ -128,31 +156,44 @@ export default function LeaderboardTable({ board }: { board: LeaderboardResp }) 
                       {r.is_me && <span className="muted"> (تو)</span>}
                     </td>
                     <td>{fa(r.played)}</td>
-                    <td>{fa(r.exact_count)}</td>
-                    <td className="pts">
-                      {fa(live ? r.live_total : r.total)}
-                      {live && r.live_points > 0 && (
-                        <span className="live-delta">{fa(r.live_points)}+</span>
-                      )}
-                    </td>
-                    {live && liveMatches.length > 0 && (
-                      <td className="live-picks-cell">
-                        {liveMatches.map((m, i) => {
-                          const pick = r.live_picks?.[i];
-                          if (!pick) return null;
-                          return (
-                            <PickBadge key={m.id} pick={pick} match={m} />
-                          );
-                        })}
-                      </td>
+                    {average ? (
+                      <>
+                        <td className="pts">{fa(r.total)}</td>
+                        <td className="pts">{fa(r.avg_points.toFixed(4))}</td>
+                      </>
+                    ) : (
+                      <>
+                        <td>{fa(r.exact_count)}</td>
+                        <td className="pts">
+                          {fa(live ? r.live_total : r.total)}
+                          {live && r.live_points > 0 && (
+                            <span className="live-delta">
+                              {fa(r.live_points)}+
+                            </span>
+                          )}
+                        </td>
+                        {live && liveMatches.length > 0 && (
+                          <td className="live-picks-cell">
+                            {liveMatches.map((m, i) => {
+                              const pick = r.live_picks?.[i];
+                              if (!pick) return null;
+                              return (
+                                <PickBadge key={m.id} pick={pick} match={m} />
+                              );
+                            })}
+                          </td>
+                        )}
+                      </>
                     )}
                   </tr>
                 );
               })
             ) : (
               <tr>
-                <td colSpan={live && liveMatches.length > 0 ? 6 : 5} className="empty">
-                  هنوز امتیازی ثبت نشده است.
+                <td colSpan={colCount} className="empty">
+                  {average
+                    ? "هنوز کسی حداقل نیمی از بازی‌های انجام‌شده را پیش‌بینی نکرده است."
+                    : "هنوز امتیازی ثبت نشده است."}
                 </td>
               </tr>
             )}
@@ -162,6 +203,13 @@ export default function LeaderboardTable({ board }: { board: LeaderboardResp }) 
           <p className="muted live-note">
             امتیازهای زنده موقتی‌اند و بر اساس نتیجهٔ فعلی بازی‌های در جریان
             محاسبه می‌شوند؛ جدول رسمی پس از ثبت نتیجهٔ نهایی به‌روز می‌شود.
+          </p>
+        )}
+        {average && (
+          <p className="muted live-note">
+            میانگین امتیازی که هر نفر در هر بازیِ پیش‌بینی‌کرده گرفته است (با
+            چهار رقم اعشار). فقط بازیکنانی که دست‌کم نیمی از بازی‌های انجام‌شده
+            را پیش‌بینی کرده‌اند نمایش داده می‌شوند.
           </p>
         )}
       </div>

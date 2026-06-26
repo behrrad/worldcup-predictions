@@ -252,7 +252,7 @@ function SheepGoatCard({ rows }: { rows: FunMemberPct[] }) {
 // Best buddies pairs
 // -------------------------------------------------------------------------- //
 function BuddiesCard({ rows }: { rows: FunBuddyPair[] }) {
-  if (rows.length === 0) return <p className="muted">حداقل دو عضو با پیش‌بینی مشترک لازم است.</p>;
+  if (rows.length === 0) return <p className="muted">هنوز زوجی با پیش‌بینی‌های مشترک کافی پیدا نشده است.</p>;
   return (
     <ol className="fun-ranked-list">
       {rows.map((r, i) => (
