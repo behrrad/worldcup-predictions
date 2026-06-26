@@ -213,6 +213,79 @@ class LeaderboardTests(TestCase):
         self.assertEqual(by_user[c.id]["rank"], 3)
         self.assertEqual(by_user[a.id]["exact_count"], 1)
 
+    def test_played_counts_only_predicted_games(self):
+        # A finished match writes a MatchScore row for *every* member (tier=NONE
+        # for non-predictors), so "played" must exclude those NONE rows.
+        comp = make_competition()
+        league = make_league(comp)
+        predictor = Membership.objects.get(league=league, user=league.owner)
+        bystander = join(league)  # in the league but never predicts
+
+        m1 = make_match(comp)
+        m2 = make_match(comp)
+        Prediction.objects.create(membership=predictor, match=m1, predicted_home=2, predicted_away=1)
+        # predictor skips m2; bystander predicts nothing.
+        for m, (h, a) in ((m1, (2, 1)), (m2, (0, 0))):
+            m.home_score, m.away_score = h, a
+            m.save()
+
+        by_id = {row["membership"].id: row for row in scoring.leaderboard(league)}
+        # Both matches finished, but predictor only predicted one and bystander none.
+        self.assertEqual(by_id[predictor.id]["played"], 1)
+        self.assertEqual(by_id[bystander.id]["played"], 0)
+
+    def test_average_eligibility_and_ranking(self):
+        # Average view: only members who predicted >= 50% of the finished games
+        # are ranked, ordered by points-per-predicted-game.
+        comp = make_competition()
+        league = make_league(comp)
+        a = Membership.objects.get(league=league, user=league.owner)
+        b = join(league)
+        c = join(league)
+
+        ms = [make_match(comp) for _ in range(4)]
+        # a predicts all 4: three exact (10 each) + one wrong winner (2) = 32.
+        for m in ms[:3]:
+            Prediction.objects.create(membership=a, match=m, predicted_home=1, predicted_away=0)
+        Prediction.objects.create(membership=a, match=ms[3], predicted_home=0, predicted_away=2)
+        # b predicts 2 (exactly 50%): both exact = 20.
+        for m in ms[:2]:
+            Prediction.objects.create(membership=b, match=m, predicted_home=1, predicted_away=0)
+        # c predicts only 1 (25%): below the bar.
+        Prediction.objects.create(membership=c, match=ms[0], predicted_home=1, predicted_away=0)
+        for m in ms:
+            m.home_score, m.away_score = 1, 0
+            m.save()
+
+        by_id = {row["membership"].id: row for row in scoring.leaderboard(league)}
+        self.assertEqual(by_id[a.id]["avg_points"], Decimal("8.0000"))   # 32 / 4
+        self.assertEqual(by_id[b.id]["avg_points"], Decimal("10.0000"))  # 20 / 2
+        # a & b cleared half of the 4 finished games; c (1 of 4) did not.
+        self.assertTrue(by_id[a.id]["eligible_for_avg"])
+        self.assertTrue(by_id[b.id]["eligible_for_avg"])
+        self.assertFalse(by_id[c.id]["eligible_for_avg"])
+        # Ranked by average: b (10) ahead of a (8); c unranked.
+        self.assertEqual(by_id[b.id]["avg_rank"], 1)
+        self.assertEqual(by_id[a.id]["avg_rank"], 2)
+        self.assertIsNone(by_id[c.id]["avg_rank"])
+
+    def test_average_rounds_to_four_decimals(self):
+        comp = make_competition()
+        league = make_league(comp)
+        a = Membership.objects.get(league=league, user=league.owner)
+        ms = [make_match(comp) for _ in range(3)]
+        # one exact (10) + two wrong-but-submitted (2 each) = 14 over 3 games.
+        Prediction.objects.create(membership=a, match=ms[0], predicted_home=1, predicted_away=0)
+        for m in ms[1:]:
+            Prediction.objects.create(membership=a, match=m, predicted_home=0, predicted_away=2)
+        for m in ms:
+            m.home_score, m.away_score = 1, 0
+            m.save()
+
+        row = {r["membership"].id: r for r in scoring.leaderboard(league)}[a.id]
+        self.assertEqual(row["total"], Decimal("14.00"))
+        self.assertEqual(row["avg_points"], Decimal("4.6667"))  # 14 / 3, 4 dp
+
     def test_member_without_scores_ranks_last(self):
         # A member with no MatchScore rows (Sum -> NULL) must order as 0, not
         # float to the top. On Postgres NULL sorts first under "-total", so

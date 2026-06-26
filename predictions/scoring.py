@@ -19,6 +19,7 @@ from decimal import ROUND_HALF_UP, Decimal
 from . import consts
 
 _CENTS = Decimal("0.01")
+_AVG = Decimal("0.0001")  # points-per-game average is shown to 4 decimals
 
 
 def outcome_sign(home: int, away: int) -> int:
@@ -162,7 +163,10 @@ def leaderboard(league):
         .select_related("user")
         .annotate(
             total=Coalesce(Sum("scores__points"), Decimal("0.00")),
-            played=Count("scores", filter=Q(scores__tier__isnull=False)),
+            # Only games the member actually predicted. A finished match writes a
+            # MatchScore row for *every* member (tier=NONE for non-predictors),
+            # so counting all rows would report total finished matches instead.
+            played=Count("scores", filter=~Q(scores__tier=consts.Tier.NONE)),
             exact_count=Count("scores", filter=Q(scores__tier=consts.Tier.EXACT)),
         )
         .order_by("-total", "joined_at")
@@ -185,7 +189,51 @@ def leaderboard(league):
             "played": m.played or 0,
             "exact_count": m.exact_count or 0,
         })
+    _annotate_averages(league, table)
     return table
+
+
+def _annotate_averages(league, table):
+    """Layer the "points per game" view onto each leaderboard row:
+
+        avg_points        total points ÷ games predicted, to 4 decimals
+                          (0 when the member has predicted nothing yet)
+        eligible_for_avg  True once they've predicted at least half of the
+                          finished matches so far — the average is noisy below
+                          that, so the UI only ranks members who clear the bar
+        avg_rank          rank among eligible members by avg_points (None if not)
+
+    `played` (set in leaderboard()) is the games the member actually predicted;
+    `finished_count` is the league-wide pool of finished matches it's measured
+    against.
+    """
+    from .models import Match
+
+    finished_count = Match.objects.filter(
+        competition=league.competition,
+        status=consts.MatchStatus.FINISHED,
+    ).count()
+    for row in table:
+        played = row["played"]
+        row["avg_points"] = (
+            (row["total"] / played).quantize(_AVG, rounding=ROUND_HALF_UP)
+            if played else Decimal("0.0000")
+        )
+        row["eligible_for_avg"] = finished_count > 0 and played * 2 >= finished_count
+        row["avg_rank"] = None
+
+    eligible = sorted(
+        (r for r in table if r["eligible_for_avg"]),
+        # Best average first; ties broken by more games predicted, then seniority.
+        key=lambda r: (-r["avg_points"], -r["played"], r["membership"].joined_at),
+    )
+    rank = 0
+    prev_avg = object()
+    for i, row in enumerate(eligible, start=1):
+        if row["avg_points"] != prev_avg:
+            rank = i
+            prev_avg = row["avg_points"]
+        row["avg_rank"] = rank
 
 
 # --------------------------------------------------------------------------- #

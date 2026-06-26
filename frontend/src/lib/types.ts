@@ -152,6 +152,12 @@ export interface LeaderRow {
   live_points: number;
   // Per-live-match picks for this member (aligned with LeaderboardResp.live_matches).
   live_picks: LivePickT[];
+  // Points-per-game view: average points per predicted game (4 decimals),
+  // the member's rank among those eligible (null if not), and whether they
+  // predicted at least half of the finished matches so far.
+  avg_points: number;
+  avg_rank: number | null;
+  eligible_for_avg: boolean;
 }
 
 export interface LeaderboardResp {

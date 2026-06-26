@@ -260,6 +260,11 @@ class LeaderboardApiTests(AuthedTestCase):
         self.assertEqual(row["live_total"], 10.0)
         self.assertEqual(row["live_rank"], row["rank"])
         self.assertEqual(row["live_points"], 0.0)
+        # Average view: predicted the only finished game, 10 pts over 1 game.
+        self.assertEqual(row["played"], 1)
+        self.assertEqual(row["avg_points"], 10.0)
+        self.assertTrue(row["eligible_for_avg"])
+        self.assertEqual(row["avg_rank"], 1)
 
     def test_leaderboard_live_view_counts_in_play_score(self):
         league = make_league(self.comp, owner=self.user)
