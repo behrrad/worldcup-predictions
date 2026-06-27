@@ -18,7 +18,7 @@ from . import consts
 
 
 def build_fun_stats(league, viewer_user_id):
-    from .models import Membership, Prediction
+    from .models import Match, Membership, Prediction
 
     memberships = list(
         Membership.objects.filter(league=league).select_related("user")
@@ -43,6 +43,29 @@ def build_fun_stats(league, viewer_user_id):
     by_match = defaultdict(list)
     for p in predictions:
         by_match[p.match_id].append(p)
+
+    # "Active participant" gate for the best-buddies pairing: how many of the
+    # finished matches each member actually predicted, measured against the
+    # league-wide pool. Before any match finishes there's no signal, so the bar
+    # is skipped (everyone passes) and the shared-match floor alone applies.
+    finished_ids = set(
+        Match.objects.filter(
+            competition=league.competition,
+            status=consts.MatchStatus.FINISHED,
+        ).values_list("id", flat=True)
+    )
+    finished_count = len(finished_ids)
+    finished_by_member = Counter(
+        p.membership_id for p in predictions if p.match_id in finished_ids
+    )
+
+    def _is_active(mid):
+        if finished_count == 0:
+            return True
+        return (
+            finished_by_member.get(mid, 0)
+            >= finished_count * consts.MIN_FINISHED_PARTICIPATION_RATIO
+        )
 
     def _name(mid):
         m = mem_by_id.get(mid)
@@ -105,6 +128,10 @@ def build_fun_stats(league, viewer_user_id):
     buddy_rows = []
     for i, mid_a in enumerate(member_ids):
         for mid_b in member_ids[i + 1:]:
+            # Both members must have predicted at least half of the finished
+            # matches — pairing a barely-active member at 100% is noise.
+            if not (_is_active(mid_a) and _is_active(mid_b)):
+                continue
             # .get() (not by_member[mid]) — indexing a defaultdict would insert an
             # empty list for members who never predicted, and later sections divide
             # by len(ps), hitting ZeroDivisionError.

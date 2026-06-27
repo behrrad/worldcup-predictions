@@ -94,6 +94,12 @@ DEFAULT_REVEAL_PREDICTIONS = True
 # shows up at 100%, drowning out genuinely similar members.
 FUN_STATS_MIN_BUDDY_MATCHES = 5
 
+# The "active participant" bar: a member counts as active once they've predicted
+# at least this fraction of the finished matches so far. Gates both the average
+# leaderboard (scoring.live_leaderboard) and the best-buddies pairing — stats
+# that are meaningless for someone who has barely played.
+MIN_FINISHED_PARTICIPATION_RATIO = 0.5
+
 
 # --------------------------------------------------------------------------- #
 # Scoring tiers (used to label *why* a prediction earned its points)

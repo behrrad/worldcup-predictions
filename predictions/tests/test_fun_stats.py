@@ -95,3 +95,41 @@ class FunStatsTests(TestCase):
         self.assertEqual(pair["total"], floor)
         self.assertEqual(pair["match_count"], floor)
         self.assertEqual(pair["pct"], 100.0)
+
+    def test_best_buddies_requires_active_participants(self):
+        """Both members of a pair must have predicted >= 50% of the finished
+        matches — a barely-active member doesn't qualify even with a perfect
+        agreement rate on the games they did play."""
+        ms = [make_match(self.comp) for _ in range(12)]  # bar = 6
+        # a predicts all 12 (active); b predicts only the first 5 (< 6).
+        for m in ms:
+            Prediction.objects.create(membership=self.a, match=m, predicted_home=1, predicted_away=1)
+        for m in ms[:5]:
+            Prediction.objects.create(membership=self.b, match=m, predicted_home=1, predicted_away=1)
+        for m in ms:
+            m.home_score, m.away_score = 1, 1
+            m.save()
+
+        # a & b share 5 games (clears the shared floor) and agree on all, but b
+        # predicted only 5 of 12 finished matches, so the pair is excluded.
+        out = fun_stats.build_fun_stats(self.league, self.a.user_id)
+        self.assertEqual(out["best_buddies"], [])
+
+        # b predicts a sixth finished match -> exactly 50%, now active.
+        Prediction.objects.create(membership=self.b, match=ms[5], predicted_home=1, predicted_away=1)
+        out = fun_stats.build_fun_stats(self.league, self.a.user_id)
+        self.assertEqual(len(out["best_buddies"]), 1)
+        self.assertEqual(out["best_buddies"][0]["total"], 6)
+
+    def test_buddies_unfiltered_before_any_match_finishes(self):
+        """With no finished matches there's no participation signal, so the
+        bar is skipped and the shared-match floor alone gates pairs."""
+        floor = consts.FUN_STATS_MIN_BUDDY_MATCHES
+        ms = [make_match(self.comp) for _ in range(floor)]  # none finished
+        for m in ms:
+            Prediction.objects.create(membership=self.a, match=m, predicted_home=0, predicted_away=0)
+            Prediction.objects.create(membership=self.b, match=m, predicted_home=0, predicted_away=0)
+
+        out = fun_stats.build_fun_stats(self.league, self.a.user_id)
+        self.assertEqual(len(out["best_buddies"]), 1)
+        self.assertEqual(out["best_buddies"][0]["total"], floor)
