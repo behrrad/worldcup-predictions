@@ -12,6 +12,8 @@ urlpatterns = [
     path("teams/", api_views.teams, name="api_teams"),
     path("players/", api_views.players, name="api_players"),
     path("players/<int:user_id>/", api_views.player_detail, name="api_player_detail"),
+    # A player's average points-per-prediction over time (across all their leagues).
+    path("players/<int:user_id>/average/", api_views.player_average, name="api_player_average"),
     path("competitions/", api_views.competitions, name="api_competitions"),
     # In-play scores (display only; lazily refreshed from the live provider).
     path("live/", api_views.live_scores, name="api_live_scores"),
@@ -29,6 +31,8 @@ urlpatterns = [
     path("leagues/<str:slug>/leaderboard/", api_views.league_leaderboard, name="api_leaderboard"),
     path("leagues/<str:slug>/recap/", api_views.league_recap, name="api_league_recap"),
     path("leagues/<str:slug>/fun-stats/", api_views.league_fun_stats, name="api_league_fun_stats"),
+    # Points & rank progression per finished match — the player-toggle line chart.
+    path("leagues/<str:slug>/progression/", api_views.league_progression, name="api_league_progression"),
     # Public, key-gated results download (no Clerk auth; the key is the credential).
     path("export/<str:key>.xlsx", api_views.export_league, name="api_export_league"),
     # In-app admin: manual result entry (gated to admins inside the views).

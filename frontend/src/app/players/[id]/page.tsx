@@ -4,7 +4,8 @@ import { notFound } from "next/navigation";
 import { serverFetch } from "@/lib/server";
 import { fa } from "@/lib/format";
 import Avatar from "@/components/Avatar";
-import type { PlayerDetail } from "@/lib/types";
+import ProfileAverageChart from "@/components/ProfileAverageChart";
+import type { PlayerAverageResp, PlayerDetail } from "@/lib/types";
 
 export default async function PlayerProfilePage({
   params,
@@ -20,6 +21,14 @@ export default async function PlayerProfilePage({
     data = null;
   }
   if (!data) notFound();
+
+  // The player's average-points-per-prediction trend, across all their leagues.
+  let avg: PlayerAverageResp | null = null;
+  try {
+    avg = (await serverFetch(`/players/${id}/average/`)) as PlayerAverageResp;
+  } catch {
+    avg = null;
+  }
 
   const p = data.profile;
 
@@ -60,6 +69,13 @@ export default async function PlayerProfilePage({
           <div className="label">پیش‌بینی</div>
         </div>
       </div>
+
+      {avg && avg.steps.length > 0 && (
+        <div className="card mt">
+          <h2 className="card-title">📈 روند میانگین امتیاز</h2>
+          <ProfileAverageChart data={avg} />
+        </div>
+      )}
 
       {data.shared_leagues.length > 0 && (
         <div className="card mt">
