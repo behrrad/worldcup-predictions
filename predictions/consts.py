@@ -124,6 +124,30 @@ TIER_CHOICES = [(key, label) for key, label in TIER_LABELS.items()]
 
 
 # --------------------------------------------------------------------------- #
+# Knockout penalty shootouts (who advances when a game is level at 120')
+# --------------------------------------------------------------------------- #
+# A knockout match still level at the end of 120' (regular + extra time) is
+# decided on penalties; the shootout winner advances. Predictions are judged on
+# the 120' score, so a member who predicts a draw in a knockout also picks who
+# they think will go through (Prediction.predicted_advancer), and the real
+# outcome is stored in Match.penalty_winner. Both use these HOME/AWAY values
+# (empty = not a shootout / not predicted).
+class Advancer:
+    NONE = ""        # not decided on penalties, or no advancer picked
+    HOME = "HOME"    # the home side advances / is predicted to advance
+    AWAY = "AWAY"    # the away side advances / is predicted to advance
+
+
+ADVANCER_LABELS = {
+    Advancer.HOME: "تیم میزبان",
+    Advancer.AWAY: "تیم میهمان",
+}
+ADVANCER_CHOICES = [(k, v) for k, v in ADVANCER_LABELS.items()]
+ADVANCER_VALUES = (Advancer.HOME, Advancer.AWAY)
+ADVANCER_MAX_LENGTH = 4   # "HOME" / "AWAY"
+
+
+# --------------------------------------------------------------------------- #
 # Match status
 # --------------------------------------------------------------------------- #
 class MatchStatus:
@@ -333,6 +357,7 @@ L_MATCH_NUMBER = "شمارهٔ بازی"
 L_VENUE = "ورزشگاه"
 L_HOME_LABEL = "جایگاه میزبان (مرحلهٔ حذفی)"
 L_AWAY_LABEL = "جایگاه میهمان (مرحلهٔ حذفی)"
+L_PENALTY_WINNER = "صعودکننده با پنالتی"
 
 L_LEAGUE = "مسابقهٔ پیش‌بینی"
 L_OWNER = "مدیر"
@@ -367,6 +392,7 @@ L_MEMBERSHIP = "عضویت"
 L_MATCH = "بازی"
 L_PREDICTED_HOME = "پیش‌بینی گل میزبان"
 L_PREDICTED_AWAY = "پیش‌بینی گل میهمان"
+L_PREDICTED_ADVANCER = "پیش‌بینی صعودکننده (پنالتی)"
 L_POINTS = "امتیاز"
 L_TIER = "نوع امتیاز"
 L_COMPUTED_AT = "زمان محاسبه"
@@ -607,6 +633,13 @@ FOOTBALL_DATA_BASE_URL = "https://api.football-data.org/v4"
 FOOTBALL_DATA_WC_CODE = "WC"             # football-data's FIFA World Cup code
 FOOTBALL_DATA_TIMEOUT = 15               # seconds
 FOOTBALL_DATA_FINISHED = "FINISHED"      # the API match status we act on
+# score.duration values + the shootout winner enum. A PENALTY_SHOOTOUT match's
+# score.fullTime *includes* the shootout goals (regularTime 1-1 + penalties 6-5
+# → fullTime 7-6), so the 120' draw we score against is fullTime − penalties and
+# the side that advances comes from score.winner.
+FOOTBALL_DATA_PENALTY = "PENALTY_SHOOTOUT"
+FOOTBALL_DATA_WINNER_HOME = "HOME_TEAM"
+FOOTBALL_DATA_WINNER_AWAY = "AWAY_TEAM"
 FOOTBALL_DATA_USER_AGENT = "worldcup-predictions/1.0"  # default urllib UA is blocked
 FOOTBALL_DATA_TOKEN_HEADER = "X-Auth-Token"
 FOOTBALL_DATA_TOKEN_ENV = "FOOTBALL_DATA_API_TOKEN"

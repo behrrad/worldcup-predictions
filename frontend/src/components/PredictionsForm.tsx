@@ -5,10 +5,11 @@ import { useAuth } from "@clerk/nextjs";
 
 import { apiFetch } from "@/lib/api";
 import { fmtDate, fmtTime, fa } from "@/lib/format";
+import { isKnockout, isDrawScore } from "@/lib/match";
 import { useTimeZone } from "@/components/LocalTime";
 import type { MatchT } from "@/lib/types";
 
-type Vals = Record<number, { home: string; away: string }>;
+type Vals = Record<number, { home: string; away: string; advancer: string }>;
 type SaveState = "idle" | "saving" | "saved" | "error";
 type Filter = "open" | "group" | "knockout" | "all";
 
@@ -35,6 +36,7 @@ export default function PredictionsForm({
       init[m.id] = {
         home: m.my_prediction ? String(m.my_prediction.home) : "",
         away: m.my_prediction ? String(m.my_prediction.away) : "",
+        advancer: m.my_prediction?.advancer ?? "",
       };
     }
     return init;
@@ -59,16 +61,34 @@ export default function PredictionsForm({
     setSaveState((s) => ({ ...s, [id]: "idle" }));
   }
 
+  function setAdvancer(id: number, side: string) {
+    setVals((s) => ({ ...s, [id]: { ...s[id], advancer: side } }));
+    setSaveState((s) => ({ ...s, [id]: "idle" }));
+  }
+
+  // A knockout draw must name who advances on penalties before it can be saved.
+  function needsAdvancer(m: MatchT, v: Vals[number]) {
+    return isKnockout(m.stage) && isDrawScore(v.home, v.away);
+  }
+
+  function incomplete(m: MatchT, v: Vals[number]) {
+    return (
+      v.home === "" || v.away === "" || (needsAdvancer(m, v) && v.advancer === "")
+    );
+  }
+
   async function saveMatch(m: MatchT) {
     const v = vals[m.id];
-    if (!v || v.home === "" || v.away === "") return;
+    if (!v || incomplete(m, v)) return;
     setSaveState((s) => ({ ...s, [m.id]: "saving" }));
     try {
       const token = await getToken();
+      // Only a knockout draw carries an advancer; the API clears it otherwise.
+      const advancer = needsAdvancer(m, v) ? v.advancer : "";
       const res = await apiFetch(`/leagues/${slug}/predictions/`, token, {
         method: "POST",
         body: JSON.stringify({
-          predictions: [{ match_id: m.id, home: v.home, away: v.away }],
+          predictions: [{ match_id: m.id, home: v.home, away: v.away, advancer }],
         }),
       });
       if (res.saved >= 1) {
@@ -210,6 +230,30 @@ export default function PredictionsForm({
                     </div>
                   </div>
 
+                  {m.can_predict && needsAdvancer(m, vals[m.id]) && (
+                    <div className="advancer-pick">
+                      <span className="advancer-q">
+                        مساوی در ۱۲۰ دقیقه؟ صعود با پنالتی با کیست؟
+                      </span>
+                      <div className="advancer-opts">
+                        <button
+                          type="button"
+                          className={`btn btn-sm ${vals[m.id].advancer === "HOME" ? "btn-pitch" : ""}`}
+                          onClick={() => setAdvancer(m.id, "HOME")}
+                        >
+                          {m.home_team?.flag} {m.home_team?.name}
+                        </button>
+                        <button
+                          type="button"
+                          className={`btn btn-sm ${vals[m.id].advancer === "AWAY" ? "btn-pitch" : ""}`}
+                          onClick={() => setAdvancer(m.id, "AWAY")}
+                        >
+                          {m.away_team?.flag} {m.away_team?.name}
+                        </button>
+                      </div>
+                    </div>
+                  )}
+
                   {m.can_predict && (
                     <div className="pred-actions">
                       <span>
@@ -225,11 +269,7 @@ export default function PredictionsForm({
                         <button
                           type="button"
                           className="btn btn-pitch btn-sm"
-                          disabled={
-                            state === "saving" ||
-                            vals[m.id].home === "" ||
-                            vals[m.id].away === ""
-                          }
+                          disabled={state === "saving" || incomplete(m, vals[m.id])}
                           onClick={() => saveMatch(m)}
                         >
                           {state === "saving"

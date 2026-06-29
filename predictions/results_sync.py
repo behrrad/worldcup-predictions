@@ -59,23 +59,62 @@ def fetch_matches(token, source_code):
         raise ResultsFetchError(consts.MSG_SYNC_BAD_JSON)
 
 
+def _strip_shootout(home, away, score):
+    """The 120' scoreline for a penalty-shootout final.
+
+    The source's fullTime *includes* the shootout goals, so subtract them back
+    out (fullTime − penalties) to recover the level scoreline we score against.
+    Fall back to regularTime, then to the fullTime as-is, if the shootout split
+    isn't present."""
+    penalties = score.get("penalties") or {}
+    ph, pa = penalties.get("home"), penalties.get("away")
+    if ph is not None and pa is not None:
+        return home - ph, away - pa
+    regular = score.get("regularTime") or {}
+    if regular.get("home") is not None and regular.get("away") is not None:
+        return regular["home"], regular["away"]
+    return home, away
+
+
+def _shootout_winner(score):
+    """HOME/AWAY from the source's shootout winner enum, or '' if unknown."""
+    winner = score.get("winner")
+    if winner == consts.FOOTBALL_DATA_WINNER_HOME:
+        return consts.Advancer.HOME
+    if winner == consts.FOOTBALL_DATA_WINNER_AWAY:
+        return consts.Advancer.AWAY
+    return consts.Advancer.NONE
+
+
 def normalize(payload):
-    """Flatten the API payload to the fields we need, keeping only scored finals."""
+    """Flatten the API payload to the fields we need, keeping only scored finals.
+
+    For a penalty-shootout final the 120' result is the level scoreline (the
+    source's fullTime carries the shootout goals on top), so we strip those back
+    out and record which side advanced — see _strip_shootout / _shootout_winner.
+    """
     results = []
     for m in payload.get("matches", []):
         if m.get("status") != consts.FOOTBALL_DATA_FINISHED:
             continue
-        full_time = (m.get("score") or {}).get("fullTime") or {}
+        score = m.get("score") or {}
+        full_time = score.get("fullTime") or {}
         home, away = m.get("homeTeam") or {}, m.get("awayTeam") or {}
-        if full_time.get("home") is None or full_time.get("away") is None:
+        hs, as_ = full_time.get("home"), full_time.get("away")
+        if hs is None or as_ is None:
             continue
+        penalty_winner = consts.Advancer.NONE
+        if score.get("duration") == consts.FOOTBALL_DATA_PENALTY:
+            hs, as_ = _strip_shootout(hs, as_, score)
+            penalty_winner = _shootout_winner(score)
         results.append({
             "home_code": home.get("tla"),
             "away_code": away.get("tla"),
             "home_name": (home.get("name") or "").strip().lower(),
             "away_name": (away.get("name") or "").strip().lower(),
-            "home_score": full_time["home"],
-            "away_score": full_time["away"],
+            "home_score": hs,
+            "away_score": as_,
+            "penalty_winner": penalty_winner,
             "utc_date": m.get("utcDate"),
         })
     return results
@@ -145,7 +184,8 @@ def apply_results(competition, results, dry_run=False):
                 continue
 
             if (match.home_score == r["home_score"]
-                    and match.away_score == r["away_score"]):
+                    and match.away_score == r["away_score"]
+                    and match.penalty_winner == r["penalty_winner"]):
                 unchanged += 1
                 continue
 
@@ -157,6 +197,7 @@ def apply_results(competition, results, dry_run=False):
             if not dry_run:
                 match.home_score = r["home_score"]
                 match.away_score = r["away_score"]
+                match.penalty_winner = r["penalty_winner"]
                 match.save()  # post_save signal recomputes scores
 
         if dry_run:

@@ -89,3 +89,49 @@ class AdminResultsTests(APITestCase):
         self.assertEqual(res.status_code, 400)
         self.match.refresh_from_db()
         self.assertIsNone(self.match.home_score)  # unchanged
+
+    def test_admin_sets_penalty_winner_on_knockout_draw(self):
+        self.match.stage = consts.Stage.SEMI
+        self.match.save()
+        self.client.force_authenticate(self.admin)
+        res = self.client.post(
+            reverse("api_admin_set_result", args=[self.match.id]),
+            {"home_score": 1, "away_score": 1, "penalty_winner": "AWAY"},
+            format="json")
+        self.assertEqual(res.status_code, 200)
+        self.assertEqual(res.json()["penalty_winner"], "AWAY")
+        self.match.refresh_from_db()
+        self.assertEqual(self.match.penalty_winner, consts.Advancer.AWAY)
+
+    def test_penalty_winner_ignored_on_decisive_knockout(self):
+        self.match.stage = consts.Stage.SEMI
+        self.match.save()
+        self.client.force_authenticate(self.admin)
+        self.client.post(
+            reverse("api_admin_set_result", args=[self.match.id]),
+            {"home_score": 2, "away_score": 1, "penalty_winner": "HOME"},
+            format="json")
+        self.match.refresh_from_db()
+        self.assertEqual(self.match.penalty_winner, consts.Advancer.NONE)
+
+    def test_penalty_winner_ignored_on_group_draw(self):
+        # self.match is a group match by default — a shootout makes no sense.
+        self.client.force_authenticate(self.admin)
+        self.client.post(
+            reverse("api_admin_set_result", args=[self.match.id]),
+            {"home_score": 1, "away_score": 1, "penalty_winner": "HOME"},
+            format="json")
+        self.match.refresh_from_db()
+        self.assertEqual(self.match.penalty_winner, consts.Advancer.NONE)
+
+    def test_clearing_result_clears_penalty_winner(self):
+        self.match.stage = consts.Stage.SEMI
+        self.match.home_score, self.match.away_score = 1, 1
+        self.match.penalty_winner = consts.Advancer.HOME
+        self.match.save()
+        self.client.force_authenticate(self.admin)
+        self.client.post(
+            reverse("api_admin_set_result", args=[self.match.id]),
+            {"home_score": None, "away_score": None}, format="json")
+        self.match.refresh_from_db()
+        self.assertEqual(self.match.penalty_winner, consts.Advancer.NONE)
