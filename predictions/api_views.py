@@ -126,13 +126,22 @@ def _match_dict(match, league, now, prediction=None, score=None):
         "away_label": consts.bracket_label_fa(match.away_label) if not match.away_team_id else None,
         "home_score": match.home_score,
         "away_score": match.away_score,
+        # For a knockout match settled on penalties, the side that advanced
+        # (HOME/AWAY); null otherwise. home_score/away_score stay the 120' draw.
+        "penalty_winner": match.penalty_winner or None,
         "live": _live_dict(match),
         "is_finished": match.is_finished,
         "is_open": is_open,
         "can_predict": is_open and bool(match.home_team_id and match.away_team_id),
         "lock_time": match.lock_time(league.lock_minutes).isoformat(),
         "my_prediction": (
-            {"home": prediction.predicted_home, "away": prediction.predicted_away}
+            {
+                "home": prediction.predicted_home,
+                "away": prediction.predicted_away,
+                # Who the member picked to advance on penalties (HOME/AWAY), set
+                # only on a knockout draw prediction; null otherwise.
+                "advancer": prediction.predicted_advancer or None,
+            }
             if prediction else None
         ),
         "my_points": float(score.points) if score else None,
@@ -567,9 +576,20 @@ def submit_predictions(request, slug):
             continue
         if home < 0 or away < 0:
             continue
+        # An advancer pick only counts on a knockout *draw* prediction; for any
+        # other pick it's cleared, so flipping a draw to a winner (or back) never
+        # leaves a stale advancer behind. Whatever the client sends is normalized
+        # to HOME/AWAY/"" here, so an out-of-band submit can't store garbage.
+        advancer = (item.get("advancer") or "").strip().upper()
+        if not (match.stage in consts.KNOCKOUT_STAGES and home == away
+                and advancer in consts.ADVANCER_VALUES):
+            advancer = consts.Advancer.NONE
         Prediction.objects.update_or_create(
             membership=membership, match=match,
-            defaults={"predicted_home": home, "predicted_away": away},
+            defaults={
+                "predicted_home": home, "predicted_away": away,
+                "predicted_advancer": advancer,
+            },
         )
         saved += 1
 
@@ -914,6 +934,7 @@ def match_detail(request, slug, match_id):
             # Scores stay hidden until the match locks.
             "home": p.predicted_home if revealed else None,
             "away": p.predicted_away if revealed else None,
+            "advancer": (p.predicted_advancer or None) if revealed else None,
             "points": float(s.points) if s else None,
             "tier_label": consts.TIER_LABELS.get(s.tier) if s else None,
         })
@@ -977,6 +998,7 @@ def league_all_predictions(request, slug):
                 "is_me": m.user_id == request.user.id,
                 "home": p.predicted_home if revealed else None,
                 "away": p.predicted_away if revealed else None,
+                "advancer": (p.predicted_advancer or None) if revealed else None,
                 "points": float(s.points) if s else None,
                 "tier": s.tier if s else None,
                 "tier_label": consts.TIER_LABELS.get(s.tier) if s else None,
@@ -994,6 +1016,7 @@ def league_all_predictions(request, slug):
             "away_label": consts.bracket_label_fa(match.away_label) if not match.away_team_id else None,
             "home_score": match.home_score,
             "away_score": match.away_score,
+            "penalty_winner": match.penalty_winner or None,
             "is_finished": match.is_finished,
             # is_open lets the UI tell a still-open match apart from one that is
             # locked/finished but kept private by the owner (both have revealed=False).
@@ -1039,6 +1062,8 @@ def _admin_match_dict(match):
         "away_label": consts.bracket_label_fa(match.away_label) if not match.away_team_id else None,
         "home_score": match.home_score,
         "away_score": match.away_score,
+        # Who advanced on penalties (HOME/AWAY) when a knockout was level at 120'.
+        "penalty_winner": match.penalty_winner or None,
         "is_finished": match.is_finished,
         "status": match.status,
     }
@@ -1067,6 +1092,7 @@ def admin_set_result(request, match_id):
     # Both empty/None -> clear the result (reverts the match to scheduled).
     if home in (None, "") and away in (None, ""):
         match.home_score = match.away_score = None
+        match.penalty_winner = consts.Advancer.NONE
         match.save()
         return Response(_admin_match_dict(match))
 
@@ -1078,5 +1104,14 @@ def admin_set_result(request, match_id):
         raise ValidationError({"detail": consts.MSG_INVALID_RESULT})
 
     match.home_score, match.away_score = home_i, away_i
+    # A knockout level at 120' is decided on penalties: record who advanced.
+    # Only meaningful for a knockout draw; cleared otherwise so a decisive result
+    # never carries a stale winner.
+    pen = (request.data.get("penalty_winner") or "").strip().upper()
+    if (match.stage in consts.KNOCKOUT_STAGES and home_i == away_i
+            and pen in consts.ADVANCER_VALUES):
+        match.penalty_winner = pen
+    else:
+        match.penalty_winner = consts.Advancer.NONE
     match.save()  # status -> FINISHED; post_save signal recomputes everyone's points
     return Response(_admin_match_dict(match))

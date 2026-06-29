@@ -28,6 +28,8 @@ export interface AdminMatchT {
   away_label: string | null;
   home_score: number | null;
   away_score: number | null;
+  // Knockout shootout winner (HOME/AWAY) when a match was level at 120'; null otherwise.
+  penalty_winner: string | null;
   is_finished: boolean;
   status: string;
 }
@@ -68,13 +70,18 @@ export interface MatchT {
   away_label: string | null;
   home_score: number | null;
   away_score: number | null;
+  // Knockout shootout winner (HOME/AWAY) when a match was level at 120'; null
+  // otherwise. home_score/away_score stay the 120' draw.
+  penalty_winner: string | null;
   // Live (in-play) state, or null when the match isn't being played right now.
   live: LiveInfoT | null;
   is_finished: boolean;
   is_open: boolean;
   can_predict: boolean;
   lock_time: string;
-  my_prediction: { home: number; away: number } | null;
+  // `advancer` (HOME/AWAY) is the side picked to go through on penalties — only
+  // set on a knockout draw prediction; null otherwise.
+  my_prediction: { home: number; away: number; advancer: string | null } | null;
   my_points: number | null;
   tier: string | null;
   tier_label: string | null;
@@ -189,6 +196,9 @@ export interface MatchDetailResp {
     name: string;
     home: number | null;
     away: number | null;
+    // The side this member picked to advance on penalties (HOME/AWAY), revealed
+    // with their score; null otherwise.
+    advancer: string | null;
     points: number | null;
     tier_label: string | null;
     is_me: boolean;
@@ -204,6 +214,8 @@ export interface AllPredEntry {
   is_me: boolean;
   home: number | null;
   away: number | null;
+  // Picked side to advance on penalties (HOME/AWAY), revealed with the score.
+  advancer: string | null;
   points: number | null;
   tier: string | null;
   tier_label: string | null;
@@ -220,6 +232,8 @@ export interface AllPredMatch {
   away_label: string | null;
   home_score: number | null;
   away_score: number | null;
+  // Knockout shootout winner (HOME/AWAY) when level at 120'; null otherwise.
+  penalty_winner: string | null;
   is_finished: boolean;
   // Still open for predictions (not yet locked). Distinguishes a genuinely
   // upcoming match from one that's locked/finished but kept private by the owner.

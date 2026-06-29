@@ -72,9 +72,9 @@ and the builder hides predictions for matches that haven't locked yet.
 | `accounts/authentication.py` | DRF auth class that calls `clerk.py`. |
 | `accounts/admin.py` | Admin for users. |
 | `predictions/models.py` | `Competition, Team, Match, League, Membership, Prediction, MatchScore`. |
-| `predictions/scoring.py` | **The scoring engine** + recompute + leaderboard (official + the live provisional view). |
+| `predictions/scoring.py` | **The scoring engine** + recompute + leaderboard (official + the live provisional view). Knockout games are judged on the **120' score**; a game level at 120' is settled on penalties, where a *draw* prediction also names who advances (`penalty_tier` reuses the exact/diff/winner ladder × the stage multiplier — see §6). |
 | `predictions/live.py` | Live in-play scores (ESPN primary, Varzesh3 fallback; lazy fetch-on-read). Writes `Match.live_*` via `queryset.update()` only — **never `save()`**, which would finalize the result and trigger scoring. |
-| `predictions/results_sync.py` | Official results from football-data.org: core of the `sync_results` command **and** `finalize_if_due` — the lazy, claim-gated auto-finalization the live endpoint triggers once a match looks over (no cron). The only pipeline allowed to `Match.save()` provider data. |
+| `predictions/results_sync.py` | Official results from football-data.org: core of the `sync_results` command **and** `finalize_if_due` — the lazy, claim-gated auto-finalization the live endpoint triggers once a match looks over (no cron). The only pipeline allowed to `Match.save()` provider data. Records the penalty-shootout winner and recovers the **120' draw** from the source (see the gotcha in §5). |
 | `predictions/telegram.py` | **Telegram reminders** (one-tap linking + morning digest + pre-kickoff nudge) **and live match-event DMs** (kickoff/goal/half-time/second-half/full-time, personalized with the member's pick + points; separate `telegram_notify_matches` opt-in). Same env-gated, no-cron, atomic-claim philosophy as live/results. `run_tick` is driven by the secret-gated `/api/tasks/tick/` endpoint (GitHub Actions cron) and also refreshes live + finalizes results. See `docs/TELEGRAM.md`. |
 | `predictions/export.py` | Builds a league's results **.xlsx** (member-per-3-columns layout). Blanks out predictions for matches that haven't locked yet. |
 | `predictions/signals.py` | On `Match` save → recompute everyone's scores. |
@@ -133,6 +133,13 @@ and the builder hides predictions for matches that haven't locked yet.
   `accounts/clerk.py` sends an explicit `User-Agent`. Keep it.
 - **Turbopack dev crashed** under load (`Map maximum size exceeded`). The dev
   script uses `--webpack` on purpose (`frontend/package.json`).
+- **football-data's `score.fullTime` includes the shootout goals.** For a
+  `PENALTY_SHOOTOUT` final it's `regularTime + penalties` (e.g. 1-1 + 6-5 = 7-6),
+  **not** the 120' draw. We score against the 120' result, so `results_sync`
+  computes it as `fullTime − penalties` (with a `regularTime` fallback) and reads
+  the advancing side from `score.winner`. Don't store `fullTime` directly for a
+  knockout, or a shootout final lands as a non-draw and the penalty scoring
+  silently never fires.
 - **Ports:** Django **8001**, Next **3077**, Supabase Postgres **54322**. CORS in
   `settings.py` must allow the Next origin.
 
@@ -158,6 +165,15 @@ and the builder hides predictions for matches that haven't locked yet.
 - Per-league overrides: editable in the **admin** (`/admin/` → مسابقه‌های پیش‌بینی).
 - Logic: `predictions/scoring.py` (`base_tier`, `score_prediction`). **Update
   `predictions/tests/test_scoring.py` to match.**
+- **Knockout penalty shootouts:** a game level at 120' is decided on penalties.
+  `Match.penalty_winner` (HOME/AWAY) records who advanced; a *draw* prediction
+  also carries `Prediction.predicted_advancer`. `scoring.penalty_tier` maps the
+  four cases onto the existing exact/diff/winner tiers (so they inherit per-league
+  points + the stage multiplier): exact-draw+advancer→exact, exact-draw or
+  right-advancer→diff, else→winner; a non-draw pick is plain participation. A
+  draw prediction only beats participation when the game actually goes to pens.
+  The advancer is entered with the result (admin/`ResultsEditor`) and with the
+  prediction (`PredictionsForm`, required for a knockout draw).
 
 ### Add another tournament (e.g. a domestic league)
 - Create a `Competition` + `Team`s + `Match`es (admin, or a new seed command —

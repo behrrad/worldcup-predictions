@@ -55,20 +55,64 @@ def base_points_for_tier(league, tier: str) -> int:
     }[tier]
 
 
-def provisional_points(league, match, prediction, actual_home, actual_away):
+def penalty_tier(prediction, actual_home, actual_away, penalty_winner) -> str:
+    """Which tier a prediction earns on a knockout match decided on penalties
+    (i.e. level at 120', the shootout settling who advances).
+
+    Only a *draw* prediction can earn the penalty bonus — a member who backed a
+    winner got the 120' outcome wrong (it was level), so they score plain
+    participation, with no credit for guessing the eventual advancer. For a draw
+    prediction, the right exact scoreline and the right advancer each lift the
+    tier, reusing the existing point ladder (so 10/7/7/5 with the defaults, then
+    × the stage multiplier like every other knockout result):
+
+        exact draw + right advancer ... EXACT          (10)
+        exact draw, wrong advancer .... DIFF           (7)
+        other draw + right advancer ... DIFF           (7)
+        other draw, wrong advancer .... WINNER         (5)
+    """
+    if prediction.predicted_home != prediction.predicted_away:
+        return consts.Tier.PARTICIPATION  # backed a winner, but it was level
+    exact = (
+        prediction.predicted_home == actual_home
+        and prediction.predicted_away == actual_away
+    )
+    advancer_ok = (
+        penalty_winner in consts.ADVANCER_VALUES
+        and prediction.predicted_advancer == penalty_winner
+    )
+    if exact and advancer_ok:
+        return consts.Tier.EXACT
+    if exact or advancer_ok:
+        return consts.Tier.DIFF
+    return consts.Tier.WINNER
+
+
+def provisional_points(league, match, prediction, actual_home, actual_away,
+                       penalty_winner=consts.Advancer.NONE):
     """
     (Decimal points, tier) a prediction would earn if the match ended
     actual_home–actual_away. `prediction` may be None when nothing was
     submitted in time. Used both for real results (via score_prediction)
     and for the live leaderboard, where the in-play score plays the result.
+
+    `penalty_winner` (HOME/AWAY) switches in the knockout-shootout rules: when a
+    knockout match is level (actual draw) and a shootout decided who advances.
+    It's only ever set for finalized results; the live view leaves it blank, so
+    an in-play draw scores as an ordinary draw until the official result lands.
     """
     if prediction is None:
         return Decimal("0.00"), consts.Tier.NONE
 
-    tier = base_tier(
-        prediction.predicted_home, prediction.predicted_away,
-        actual_home, actual_away,
-    )
+    if (penalty_winner in consts.ADVANCER_VALUES
+            and match.stage in consts.KNOCKOUT_STAGES
+            and actual_home == actual_away):
+        tier = penalty_tier(prediction, actual_home, actual_away, penalty_winner)
+    else:
+        tier = base_tier(
+            prediction.predicted_home, prediction.predicted_away,
+            actual_home, actual_away,
+        )
     base = Decimal(base_points_for_tier(league, tier))
     multiplier = Decimal(league.multiplier_for(match.stage))
     points = (base * multiplier).quantize(_CENTS, rounding=ROUND_HALF_UP)
@@ -85,6 +129,7 @@ def score_prediction(league, match, prediction):
         return None
     return provisional_points(
         league, match, prediction, match.home_score, match.away_score,
+        penalty_winner=match.penalty_winner,
     )
 
 

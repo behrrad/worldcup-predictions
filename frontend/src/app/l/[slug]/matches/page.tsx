@@ -2,6 +2,7 @@ import Link from "next/link";
 
 import { serverFetch } from "@/lib/server";
 import { fa } from "@/lib/format";
+import { advancerTeamName } from "@/lib/match";
 import { LocalDateTime } from "@/components/LocalTime";
 import type { MatchT } from "@/lib/types";
 
@@ -53,12 +54,21 @@ export default async function Matches({
                 <span>{m.away_team?.name ?? m.away_label ?? "؟"}</span>
               </div>
             </div>
+            {m.penalty_winner && (
+              <p className="center muted" style={{ margin: "4px 0 0" }}>
+                🥅 صعود{" "}
+                {advancerTeamName(m.penalty_winner, m.home_team, m.away_team)} با
+                ضربات پنالتی
+              </p>
+            )}
             <div className="match-meta" style={{ marginTop: 6 }}>
               <Link href={`/l/${slug}/match/${m.id}`} className="muted">
                 پیش‌بینی من:{" "}
                 {m.my_prediction ? (
                   <strong>
                     {fa(m.my_prediction.home)} : {fa(m.my_prediction.away)}
+                    {m.my_prediction.advancer &&
+                      ` ↑${advancerTeamName(m.my_prediction.advancer, m.home_team, m.away_team)}`}
                   </strong>
                 ) : (
                   "—"

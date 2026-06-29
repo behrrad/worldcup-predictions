@@ -117,6 +117,129 @@ class ScorePredictionTests(TestCase):
         self.assertEqual(points, Decimal("3.00"))
 
 
+class PenaltyShootoutTests(TestCase):
+    """Knockout matches level at 120' and decided on penalties.
+
+    The 120' draw is scored against home_score/away_score; the shootout winner
+    (Match.penalty_winner) lifts a draw prediction onto a higher tier when the
+    member also picked the right side to advance. Only draw predictions can earn
+    the bonus, and only when the game actually goes to penalties.
+    """
+
+    def setUp(self):
+        self.comp = make_competition()
+        self.league = make_league(self.comp)  # 10/7/5/2, knockout ×1.5
+        self.member = Membership.objects.get(league=self.league)
+
+    def _pen_match(self, home, away, winner, stage=consts.Stage.ROUND_OF_16):
+        """A finished knockout match level at home-away, decided on penalties
+        for `winner` (HOME/AWAY)."""
+        m = make_match(self.comp, stage=stage)
+        m.home_score, m.away_score = home, away
+        m.penalty_winner = winner
+        m.save()
+        return m
+
+    def _pred(self, match, ph, pa, advancer=consts.Advancer.NONE):
+        return Prediction.objects.create(
+            membership=self.member, match=match,
+            predicted_home=ph, predicted_away=pa, predicted_advancer=advancer,
+        )
+
+    def test_exact_draw_right_advancer_is_exact(self):
+        m = self._pen_match(1, 1, consts.Advancer.HOME)
+        points, tier = scoring.score_prediction(
+            self.league, m, self._pred(m, 1, 1, consts.Advancer.HOME))
+        self.assertEqual(tier, consts.Tier.EXACT)
+        self.assertEqual(points, Decimal("15.00"))  # 10 × 1.5
+
+    def test_exact_draw_wrong_advancer_is_diff(self):
+        m = self._pen_match(1, 1, consts.Advancer.AWAY)
+        points, tier = scoring.score_prediction(
+            self.league, m, self._pred(m, 1, 1, consts.Advancer.HOME))
+        self.assertEqual(tier, consts.Tier.DIFF)
+        self.assertEqual(points, Decimal("10.50"))  # 7 × 1.5
+
+    def test_other_draw_right_advancer_is_diff(self):
+        # Right that it's a draw and who advances, wrong exact scoreline.
+        m = self._pen_match(1, 1, consts.Advancer.HOME)
+        points, tier = scoring.score_prediction(
+            self.league, m, self._pred(m, 0, 0, consts.Advancer.HOME))
+        self.assertEqual(tier, consts.Tier.DIFF)
+        self.assertEqual(points, Decimal("10.50"))
+
+    def test_other_draw_wrong_advancer_is_winner(self):
+        m = self._pen_match(1, 1, consts.Advancer.AWAY)
+        points, tier = scoring.score_prediction(
+            self.league, m, self._pred(m, 2, 2, consts.Advancer.HOME))
+        self.assertEqual(tier, consts.Tier.WINNER)
+        self.assertEqual(points, Decimal("7.50"))  # 5 × 1.5
+
+    def test_exact_draw_without_advancer_pick_caps_at_diff(self):
+        # An exact draw with no advancer picked can't be EXACT (advancer wrong),
+        # so it lands at DIFF — never the top tier.
+        m = self._pen_match(1, 1, consts.Advancer.HOME)
+        points, tier = scoring.score_prediction(
+            self.league, m, self._pred(m, 1, 1, consts.Advancer.NONE))
+        self.assertEqual(tier, consts.Tier.DIFF)
+        self.assertEqual(points, Decimal("10.50"))
+
+    def test_non_draw_prediction_is_participation(self):
+        # Backed a winner but the match was level at 120' — wrong outcome, no
+        # advancer credit even if the predicted winner went on to advance.
+        m = self._pen_match(1, 1, consts.Advancer.HOME)
+        points, tier = scoring.score_prediction(
+            self.league, m, self._pred(m, 2, 1))
+        self.assertEqual(tier, consts.Tier.PARTICIPATION)
+        self.assertEqual(points, Decimal("3.00"))  # 2 × 1.5
+
+    def test_draw_pick_in_game_decided_in_regulation_is_participation(self):
+        # The note: a draw prediction earns >2 ONLY when the game goes to pens.
+        # Here the knockout was decided in normal/extra time (2-1, no shootout).
+        m = make_match(self.comp, stage=consts.Stage.ROUND_OF_16)
+        m.home_score, m.away_score = 2, 1
+        m.save()
+        points, tier = scoring.score_prediction(
+            self.league, m, self._pred(m, 1, 1, consts.Advancer.HOME))
+        self.assertEqual(tier, consts.Tier.PARTICIPATION)
+        self.assertEqual(points, Decimal("3.00"))
+
+    def test_group_match_never_uses_penalty_rules(self):
+        # Group games can't go to penalties; a stray penalty_winner is ignored,
+        # so an exact draw scores the normal EXACT tier (×1.0).
+        m = make_match(self.comp, stage=consts.Stage.GROUP)
+        m.home_score, m.away_score = 1, 1
+        m.penalty_winner = consts.Advancer.HOME  # nonsensical for a group game
+        m.save()
+        points, tier = scoring.score_prediction(
+            self.league, m, self._pred(m, 1, 1, consts.Advancer.AWAY))
+        self.assertEqual(tier, consts.Tier.EXACT)
+        self.assertEqual(points, Decimal("10.00"))
+
+    def test_knockout_draw_without_winner_scores_normally(self):
+        # A knockout recorded as a draw but with no penalty_winner yet (result
+        # synced before the shootout split arrived) falls back to normal scoring.
+        m = make_match(self.comp, stage=consts.Stage.QUARTER)
+        m.home_score, m.away_score = 0, 0
+        m.save()
+        points, tier = scoring.score_prediction(
+            self.league, m, self._pred(m, 0, 0))
+        self.assertEqual(tier, consts.Tier.EXACT)
+        self.assertEqual(points, Decimal("15.00"))
+
+    def test_penalty_result_recomputes_via_signal(self):
+        # End-to-end: a prediction exists, then the penalty result is saved —
+        # the post_save signal must write the right MatchScore.
+        m = make_match(self.comp, stage=consts.Stage.SEMI)
+        self._pred(m, 1, 1, consts.Advancer.AWAY)
+        m.home_score, m.away_score = 1, 1
+        m.penalty_winner = consts.Advancer.AWAY
+        m.save()
+        score = self.member.scores.get(match=m)
+        self.assertEqual(score.tier, consts.Tier.EXACT)
+        self.assertEqual(score.points, Decimal("15.00"))
+
+
 class CustomConfigTests(TestCase):
     def test_custom_points_and_multiplier(self):
         comp = make_competition()
