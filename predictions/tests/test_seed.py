@@ -142,7 +142,10 @@ class BracketLabelTranslationTests(TestCase):
         from predictions.management.commands.seed_worldcup2026 import DATA_PATH
         call_command("seed_worldcup2026", verbosity=0)
         comp = Competition.objects.get(slug=sd.WC2026_SLUG)
-        ko = comp.matches.exclude(stage=consts.Stage.GROUP).order_by("match_number").first()
+        # A still-undecided knockout slot (R32 fixtures are now named in the JSON,
+        # so the first *empty* knockout match is an R16+ slot).
+        ko = (comp.matches.exclude(stage=consts.Stage.GROUP)
+              .filter(home_team__isnull=True).order_by("match_number").first())
         self.assertIsNone(ko.home_team_id)  # starts undecided
         home, away = comp.teams.all()[0], comp.teams.all()[1]
         ko.home_team, ko.away_team = home, away
@@ -153,6 +156,42 @@ class BracketLabelTranslationTests(TestCase):
         ko.refresh_from_db()
         self.assertEqual(ko.home_team_id, home.id)
         self.assertEqual(ko.away_team_id, away.id)
+
+    def test_autofilled_knockout_slot_keeps_predictions_on_reload(self):
+        """The bracket auto-fill (results_sync.apply_bracket) names an empty
+        knockout slot, a member predicts it, then a schedule reload that now also
+        names those teams must KEEP the prediction — filling a previously-empty
+        slot is not a fixture change."""
+        from predictions.management.commands.seed_worldcup2026 import DATA_PATH
+        # First load a schedule where R32 #73 is still undecided (null teams).
+        data = json.loads(DATA_PATH.read_text(encoding="utf-8"))
+        by_num = {x["match_number"]: x for x in data["matches"]}
+        real_home, real_away = by_num[73]["home_code"], by_num[73]["away_code"]
+        by_num[73]["home_code"] = by_num[73]["away_code"] = None
+        with tempfile.NamedTemporaryFile("w", suffix=".json", delete=False) as f:
+            json.dump(data, f)
+            undecided_path = f.name
+        call_command("seed_worldcup2026", "--file", undecided_path, verbosity=0)
+        comp = Competition.objects.get(slug=sd.WC2026_SLUG)
+        ko = comp.matches.get(match_number=73)
+        self.assertIsNone(ko.home_team_id)  # undecided on first load
+
+        # Auto-fill assigns the real teams; a member then predicts the match.
+        home, away = comp.teams.get(code=real_home), comp.teams.get(code=real_away)
+        Match.objects.filter(pk=ko.pk).update(home_team=home, away_team=away)
+        user = User.objects.create_user(email="kp@test.com", password="pw")
+        league = League.objects.create(name="L", competition=comp, owner=user)
+        mem = Membership.objects.create(league=league, user=user, role=consts.Role.OWNER)
+        Prediction.objects.create(membership=mem, match=ko,
+                                  predicted_home=1, predicted_away=0)
+
+        # Reload the real schedule, which now NAMES those same teams.
+        call_command("seed_worldcup2026", "--file", str(DATA_PATH), verbosity=0)
+
+        ko.refresh_from_db()
+        self.assertEqual(ko.home_team_id, home.id)
+        self.assertEqual(ko.away_team_id, away.id)
+        self.assertTrue(Prediction.objects.filter(match=ko, membership=mem).exists())
 
     def test_rejects_invalid_knockout_team_code(self):
         """A non-null team code on any match (incl. knockout) must be a real team."""
@@ -238,7 +277,10 @@ class BracketLabelTranslationTests(TestCase):
         comp = Competition.objects.get(slug=sd.WC2026_SLUG)
         ghost = Team.objects.create(competition=comp, name_fa="حذف‌شده", name_en="Gone",
                                     code="ZZZ", group="")
-        ko = comp.matches.exclude(stage=consts.Stage.GROUP).order_by("match_number").first()
+        # Use a still-undecided knockout slot (the named R32 fixtures would be
+        # reassigned from the JSON on reload, not reverted to undecided).
+        ko = (comp.matches.exclude(stage=consts.Stage.GROUP)
+              .filter(home_team__isnull=True).order_by("match_number").first())
         ko.home_team = ghost
         ko.home_score, ko.away_score = 1, 0
         ko.save()

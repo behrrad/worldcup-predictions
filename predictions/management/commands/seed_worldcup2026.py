@@ -180,14 +180,20 @@ class Command(BaseCommand):
                 defaults["away_team"] = team_map.get(ac)
 
             # Treat the fixture as changed when the file repoints this match number
-            # at a different pairing OR a previously-assigned team has been pruned
+            # at a *different* pairing OR a previously-assigned team has been pruned
             # (its code is gone from the new schedule). In either case the old
             # predictions/scores/result were about other teams — drop them so they
             # aren't reattached to the wrong (or now-empty) fixture. Unchanged
             # fixtures keep everything (the whole point of the upsert).
+            #
+            # Filling a previously-EMPTY knockout slot (old code None -> a team) is
+            # NOT a change: the prediction was a blind scoreline on the bracket slot
+            # and stays valid. So the "differs" checks require the old code to exist
+            # — otherwise re-seeding after the bracket auto-fills would wipe knockout
+            # predictions (see results_sync.apply_bracket).
             old = old_fixture.get(mn)
             fixture_changed = old is not None and (
-                (hc and old[0] != hc) or (ac and old[1] != ac)
+                (hc and old[0] and old[0] != hc) or (ac and old[1] and old[1] != ac)
                 or (old[0] and old[0] not in team_map)
                 or (old[1] and old[1] not in team_map)
             )

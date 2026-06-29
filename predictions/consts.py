@@ -615,6 +615,31 @@ FOOTBALL_DATA_TOKEN_ENV = "FOOTBALL_DATA_API_TOKEN"
 # season/source being written onto the 2026 schedule.
 FOOTBALL_DATA_MATCH_WINDOW_HOURS = 48
 
+# Knockout bracket mirror: map football-data's knockout stage names onto our
+# Stage codes. Once the real bracket is set, the WC feed reports each knockout
+# fixture with its decided teams; we copy those onto our (initially team-less)
+# knockout matches so the result sync can then finalize them. See
+# results_sync.apply_bracket.
+FOOTBALL_DATA_STAGE_MAP = {
+    "LAST_32": Stage.ROUND_OF_32,
+    "LAST_16": Stage.ROUND_OF_16,
+    "QUARTER_FINALS": Stage.QUARTER,
+    "SEMI_FINALS": Stage.SEMI,
+    "THIRD_PLACE": Stage.THIRD_PLACE,
+    "FINAL": Stage.FINAL,
+}
+# A feed fixture is matched to a local knockout match by identical stage and a
+# kickoff within this many hours (greedy nearest, one-to-one). Knockout kickoffs
+# in a stage are spaced ≥3.5h apart, so this tolerates schedule drift without
+# colliding with an adjacent fixture.
+FOOTBALL_DATA_BRACKET_WINDOW_HOURS = 12
+# Knockout teams are filled in this many hours ahead of kickoff (a few days), so
+# the bracket populates as soon as the draw is known, not only once it's overdue.
+BRACKET_LOOKAHEAD_HOURS = 96
+
+MSG_BRACKET_ASSIGNED = "تکمیل جدول: بازی {n} ← {home} - {away}"
+MSG_BRACKET_DONE = "تکمیل جدول مرحلهٔ حذفی: {assigned} بازی تکمیل شد."
+
 MSG_SYNC_NO_TOKEN = (
     "توکن دسترسی football-data.org تنظیم نشده است "
     "(متغیر محیطی FOOTBALL_DATA_API_TOKEN یا گزینهٔ --token)."

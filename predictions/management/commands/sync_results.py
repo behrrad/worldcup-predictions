@@ -15,7 +15,8 @@ Design notes (implemented in results_sync.py):
   guessed at.
 - Re-running is idempotent: a result already stored is reported as "unchanged".
 - Knockout matches whose teams aren't decided yet simply don't match anything
-  (filling those in is the separate auto-progress concern).
+  here; the lazy tick (results_sync.finalize_if_due) mirrors the knockout
+  bracket from the same feed so those teams fill in automatically.
 
 Usage:
     manage.py sync_results [--token TOKEN] [--competition SLUG] [--dry-run]
