@@ -76,6 +76,9 @@ export interface MatchT {
   // Live (in-play) state, or null when the match isn't being played right now.
   live: LiveInfoT | null;
   is_finished: boolean;
+  // When false the match is voided: it earns no points and is left out of the
+  // standings, though the prediction and result are still shown.
+  counts_for_scoring: boolean;
   is_open: boolean;
   can_predict: boolean;
   lock_time: string;
@@ -235,6 +238,9 @@ export interface AllPredMatch {
   // Knockout shootout winner (HOME/AWAY) when level at 120'; null otherwise.
   penalty_winner: string | null;
   is_finished: boolean;
+  // When false the match is voided from scoring (no points), though predictions
+  // and the result are still shown.
+  counts_for_scoring: boolean;
   // Still open for predictions (not yet locked). Distinguishes a genuinely
   // upcoming match from one that's locked/finished but kept private by the owner.
   is_open: boolean;

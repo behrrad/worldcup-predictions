@@ -51,6 +51,13 @@ export default async function MatchDetail({
             با ضربات پنالتی
           </p>
         )}
+        {!m.counts_for_scoring && (
+          <p className="center mt">
+            <span className="no-score-badge">
+              🚫 این بازی در امتیازها حساب نمی‌شود
+            </span>
+          </p>
+        )}
         {m.my_prediction && (
           <p className="center mt">
             پیش‌بینی تو:{" "}

@@ -61,6 +61,13 @@ export default async function Matches({
                 ضربات پنالتی
               </p>
             )}
+            {!m.counts_for_scoring && (
+              <p className="center" style={{ margin: "6px 0 0" }}>
+                <span className="no-score-badge">
+                  🚫 این بازی در امتیازها حساب نمی‌شود
+                </span>
+              </p>
+            )}
             <div className="match-meta" style={{ marginTop: 6 }}>
               <Link href={`/l/${slug}/match/${m.id}`} className="muted">
                 پیش‌بینی من:{" "}

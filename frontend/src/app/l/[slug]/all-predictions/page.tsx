@@ -93,6 +93,13 @@ function MatchCard({ m, memberCount }: { m: AllPredMatch; memberCount: number })
           پنالتی
         </p>
       )}
+      {!m.counts_for_scoring && (
+        <p className="center" style={{ margin: "6px 0 0" }}>
+          <span className="no-score-badge">
+            🚫 این بازی در امتیازها حساب نمی‌شود
+          </span>
+        </p>
+      )}
 
       {m.predictions.length === 0 ? (
         <div className="empty">هنوز کسی برای این بازی پیش‌بینی ثبت نکرده.</div>
