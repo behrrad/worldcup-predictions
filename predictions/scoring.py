@@ -123,9 +123,11 @@ def score_prediction(league, match, prediction):
     """
     Compute (Decimal points, tier) for one member's prediction on a finished
     match. `prediction` may be None when nothing was submitted in time.
-    Returns None if the match has no final result yet.
+    Returns None if the match has no final result yet, or if the match is
+    flagged out of scoring (count_for_scoring=False) — in both cases no
+    MatchScore row should exist for it.
     """
-    if not match.is_finished:
+    if not match.is_finished or not match.count_for_scoring:
         return None
     return provisional_points(
         league, match, prediction, match.home_score, match.away_score,
@@ -165,8 +167,10 @@ def recompute_match_scores(match) -> int:
     """
     from .models import League, MatchScore, Membership
 
-    if not match.is_finished:
-        # Result was removed/incomplete: drop any stale scores for this match.
+    if not match.is_finished or not match.count_for_scoring:
+        # Result removed/incomplete, or the match was flagged out of scoring:
+        # drop any stale scores for it (toggling count_for_scoring off lands here
+        # via the post-save recompute and clears the match's existing points).
         MatchScore.objects.filter(match=match).delete()
         return 0
 
@@ -184,7 +188,7 @@ def recompute_league_scores(league) -> int:
     memberships = list(Membership.objects.filter(league=league))
     finished = Match.objects.filter(
         competition=league.competition, status=consts.MatchStatus.FINISHED
-    )
+    ).exclude(count_for_scoring=False)
     written = 0
     for match in finished:
         if match.is_finished:
@@ -258,7 +262,7 @@ def _annotate_averages(league, table):
     finished_count = Match.objects.filter(
         competition=league.competition,
         status=consts.MatchStatus.FINISHED,
-    ).count()
+    ).exclude(count_for_scoring=False).count()
     for row in table:
         played = row["played"]
         row["avg_points"] = (
@@ -332,6 +336,7 @@ def progression(league):
         Match.objects.filter(
             competition=league.competition, status=consts.MatchStatus.FINISHED,
         )
+        .exclude(count_for_scoring=False)
         .select_related("home_team", "away_team")
         .order_by("kickoff", "match_number")
     )
@@ -442,6 +447,7 @@ def _fetch_live_data(league):
         .filter(competition=league.competition)
         .exclude(live_status=consts.LiveStatus.NONE)
         .exclude(status=consts.MatchStatus.FINISHED)
+        .exclude(count_for_scoring=False)
         .filter(live_home_score__isnull=False, live_away_score__isnull=False)
     )
     if not live_matches:

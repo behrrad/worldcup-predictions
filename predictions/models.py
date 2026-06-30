@@ -135,6 +135,16 @@ class Match(models.Model):
         consts.L_STATUS, max_length=12,
         choices=consts.MATCH_STATUS_CHOICES, default=consts.MatchStatus.SCHEDULED,
     )
+    # When False, this match is omitted from scoring: no MatchScore rows are
+    # written, it never appears on any leaderboard/average, and the live overlay
+    # ignores it — yet predictions and the real result are kept intact. Toggling
+    # it off on a finished match deletes its existing scores (the recompute that
+    # save() triggers drops them); toggling back on rescores normally. Used to
+    # void a match without destroying anyone's predictions.
+    count_for_scoring = models.BooleanField(
+        consts.L_COUNT_FOR_SCORING, default=True,
+        help_text=consts.HELP_COUNT_FOR_SCORING,
+    )
     venue = models.CharField(consts.L_VENUE, max_length=120, blank=True)
     # Bracket-slot placeholders for knockout matches whose teams aren't known yet
     # (e.g. "Group A Winner", "Match 73 Winner"). Stored as the source English

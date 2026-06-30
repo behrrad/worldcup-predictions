@@ -308,6 +308,83 @@ class RecomputeTests(TestCase):
         self.assertFalse(MatchScore.objects.filter(match=m).exists())
 
 
+class CountForScoringTests(TestCase):
+    """A match with count_for_scoring=False is voided: predictions and the
+    result are kept, but it contributes no points and is invisible to the
+    leaderboard / averages / live view."""
+
+    def setUp(self):
+        self.comp = make_competition()
+        self.league = make_league(self.comp)
+        self.member = Membership.objects.get(league=self.league)
+
+    def _finished_match(self, count_for_scoring=True):
+        from predictions.models import MatchScore
+        m = make_match(self.comp, count_for_scoring=count_for_scoring)
+        Prediction.objects.create(
+            membership=self.member, match=m, predicted_home=1, predicted_away=0,
+        )
+        m.home_score, m.away_score = 1, 0  # would be an exact hit (10 pts)
+        m.save()
+        return m, MatchScore
+
+    def test_voided_match_writes_no_scores(self):
+        m, MatchScore = self._finished_match(count_for_scoring=False)
+        self.assertFalse(MatchScore.objects.filter(match=m).exists())
+        # The prediction and the result are untouched.
+        self.assertTrue(Prediction.objects.filter(match=m).exists())
+        self.assertTrue(m.is_finished)
+
+    def test_toggling_off_deletes_existing_scores(self):
+        m, MatchScore = self._finished_match(count_for_scoring=True)
+        self.assertTrue(MatchScore.objects.filter(match=m).exists())
+        m.count_for_scoring = False
+        m.save()  # post-save recompute should drop the stale scores
+        self.assertFalse(MatchScore.objects.filter(match=m).exists())
+
+    def test_toggling_back_on_rescores(self):
+        m, MatchScore = self._finished_match(count_for_scoring=False)
+        m.count_for_scoring = True
+        m.save()
+        score = MatchScore.objects.get(match=m, membership=self.member)
+        self.assertEqual(score.tier, consts.Tier.EXACT)
+        self.assertEqual(score.points, Decimal("10.00"))
+
+    def test_voided_match_excluded_from_leaderboard(self):
+        scored, _ = self._finished_match(count_for_scoring=True)        # 10 pts
+        voided = make_match(self.comp, count_for_scoring=False)
+        Prediction.objects.create(
+            membership=self.member, match=voided, predicted_home=2, predicted_away=2,
+        )
+        voided.home_score, voided.away_score = 2, 2
+        voided.save()
+
+        row = {r["membership"].id: r for r in scoring.leaderboard(self.league)}[self.member.id]
+        self.assertEqual(row["total"], Decimal("10.00"))  # only the scored match
+        self.assertEqual(row["played"], 1)                # voided game not counted
+
+    def test_voided_match_not_in_average_denominator(self):
+        # Member predicts the one scored match; a voided finished match must not
+        # inflate the "finished games" denominator that gates average eligibility.
+        self._finished_match(count_for_scoring=True)
+        voided = make_match(self.comp, count_for_scoring=False)
+        voided.home_score, voided.away_score = 0, 0
+        voided.save()
+
+        row = {r["membership"].id: r for r in scoring.leaderboard(self.league)}[self.member.id]
+        # 1 predicted of 1 counted finished game -> eligible; avg is the full 10.
+        self.assertTrue(row["eligible_for_avg"])
+        self.assertEqual(row["avg_points"], Decimal("10.0000"))
+
+    def test_recompute_league_skips_voided(self):
+        from predictions.models import MatchScore
+        m, _ = self._finished_match(count_for_scoring=False)
+        # A league-wide recompute (e.g. after settings change) must not resurrect
+        # scores for a voided match.
+        scoring.recompute_league_scores(self.league)
+        self.assertFalse(MatchScore.objects.filter(match=m).exists())
+
+
 class LeaderboardTests(TestCase):
     def test_ranking_and_ties(self):
         comp = make_competition()
