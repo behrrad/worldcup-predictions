@@ -521,6 +521,15 @@ class LeagueMatchesApiTests(AuthedTestCase):
         self.assertEqual(k["home_label"], consts.BRACKET_UNKNOWN)
         self.assertEqual(k["away_label"], consts.BRACKET_UNKNOWN)
 
+    def test_counts_for_scoring_flag_in_payload(self):
+        normal = make_match(self.comp, kickoff=timezone.now() + timedelta(days=1))
+        voided = make_match(self.comp, kickoff=timezone.now() + timedelta(days=2),
+                            count_for_scoring=False)
+        res = self.client.get(reverse("api_league_matches", args=[self.league.slug]))
+        by_id = {m["id"]: m for m in res.json()}
+        self.assertTrue(by_id[normal.id]["counts_for_scoring"])
+        self.assertFalse(by_id[voided.id]["counts_for_scoring"])
+
 
 class ProfileMeTests(AuthedTestCase):
     def test_me_returns_full_profile(self):

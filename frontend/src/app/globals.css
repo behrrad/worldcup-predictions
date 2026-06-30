@@ -240,6 +240,7 @@ a { color: inherit; text-decoration: none; }
 .lock-open { color: var(--success); font-weight: 700; }
 .pts { font-weight: 800; color: var(--green-ink); font-family: var(--display); }
 .pts-pill { background: var(--gold-tint); color: var(--gold-ink); border-radius: 999px; padding: 3px 11px; font-weight: 800; font-size: 0.82rem; }
+.no-score-badge { display: inline-block; background: var(--bg); color: var(--muted); border: 1px solid var(--line-strong); border-radius: 999px; padding: 2px 10px; font-weight: 700; font-size: 0.76rem; }
 
 /* Tables */
 .table { width: 100%; border-collapse: collapse; }

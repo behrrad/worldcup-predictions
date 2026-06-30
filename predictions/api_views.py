@@ -131,6 +131,9 @@ def _match_dict(match, league, now, prediction=None, score=None):
         "penalty_winner": match.penalty_winner or None,
         "live": _live_dict(match),
         "is_finished": match.is_finished,
+        # When False, this match is voided: it earns no points and is left out of
+        # the standings, though predictions and the result are still shown.
+        "counts_for_scoring": match.count_for_scoring,
         "is_open": is_open,
         "can_predict": is_open and bool(match.home_team_id and match.away_team_id),
         "lock_time": match.lock_time(league.lock_minutes).isoformat(),
@@ -1018,6 +1021,9 @@ def league_all_predictions(request, slug):
             "away_score": match.away_score,
             "penalty_winner": match.penalty_winner or None,
             "is_finished": match.is_finished,
+            # When False, this match is voided from scoring (no points), though
+            # predictions and the result are still shown.
+            "counts_for_scoring": match.count_for_scoring,
             # is_open lets the UI tell a still-open match apart from one that is
             # locked/finished but kept private by the owner (both have revealed=False).
             "is_open": is_open,
