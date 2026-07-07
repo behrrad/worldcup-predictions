@@ -502,12 +502,39 @@ BRACKET_MATCH_WINNER = "برندهٔ بازی {n}"
 BRACKET_MATCH_LOSER = "بازندهٔ بازی {n}"
 BRACKET_UNKNOWN = "نامشخص"  # empty/undecided slot
 
+# A knockout slot points at the winner or the loser of an earlier match. These
+# are the two "kind"s a "Match N Winner"/"Match N Loser" label resolves to (also
+# the group(2) captured by BRACKET_MATCH_SLOT_RE); the bracket auto-advance reads
+# them to know whether a slot takes the advancing or the eliminated side.
+BRACKET_WINNER = "Winner"
+BRACKET_LOSER = "Loser"
+# Match-referencing slot label, e.g. "Match 73 Winner" -> (73, "Winner").
+BRACKET_MATCH_SLOT_RE = re.compile(r"Match (\d+) (Winner|Loser)")
+
+# The two team sides of a match, as the model's field-name stems (home_team /
+# away_team, home_score / away_score). Used to iterate a match's slots generically.
+SIDE_HOME = "home"
+SIDE_AWAY = "away"
+
 _FA_DIGITS = str.maketrans("0123456789", "۰۱۲۳۴۵۶۷۸۹")
 
 
 def to_fa_digits(value) -> str:
     """Render a number with Persian (Eastern Arabic) digits."""
     return str(value).translate(_FA_DIGITS)
+
+
+def parse_bracket_slot(label: str):
+    """Parse a "Match N Winner"/"Match N Loser" slot label into
+    ``(source_match_number: int, kind)`` where kind is BRACKET_WINNER/LOSER, or
+    None for an empty label or any other placeholder (group slots, real teams).
+    """
+    if not label:
+        return None
+    m = BRACKET_MATCH_SLOT_RE.fullmatch(label.strip())
+    if not m:
+        return None
+    return int(m.group(1)), m.group(2)
 
 
 def bracket_label_fa(label: str) -> str:
@@ -525,10 +552,11 @@ def bracket_label_fa(label: str) -> str:
         return BRACKET_GROUP_RUNNER_UP.format(group=m.group(1))
     if m := re.fullmatch(r"Group ([A-L](?:/[A-L])*) 3rd Place", label):
         return BRACKET_GROUP_THIRD.format(groups=m.group(1))
-    if m := re.fullmatch(r"Match (\d+) Winner", label):
-        return BRACKET_MATCH_WINNER.format(n=to_fa_digits(m.group(1)))
-    if m := re.fullmatch(r"Match (\d+) Loser", label):
-        return BRACKET_MATCH_LOSER.format(n=to_fa_digits(m.group(1)))
+    if m := BRACKET_MATCH_SLOT_RE.fullmatch(label):
+        n = to_fa_digits(m.group(1))
+        template = (BRACKET_MATCH_WINNER if m.group(2) == BRACKET_WINNER
+                    else BRACKET_MATCH_LOSER)
+        return template.format(n=n)
     return label
 
 
