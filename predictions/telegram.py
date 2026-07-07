@@ -698,12 +698,13 @@ def run_tick(now=None) -> dict:
     each active competition (so those work without app traffic), then sends due
     match-event DMs and prediction reminders. Cheap no-ops throughout when
     nothing is configured/pending."""
-    from . import live, results_sync
+    from . import bracket, live, results_sync
     from .models import Competition
 
     now = now or timezone.now()
     result = {
-        "polled": 0, "live": 0, "finalized": 0, "events": 0, "digests": 0, "nudges": 0,
+        "polled": 0, "live": 0, "finalized": 0, "advanced": 0,
+        "events": 0, "digests": 0, "nudges": 0,
     }
 
     result["polled"] = poll_updates(now)
@@ -712,6 +713,9 @@ def run_tick(now=None) -> dict:
             result["live"] += 1
         if results_sync.finalize_if_due(competition, now):
             result["finalized"] += 1
+        # Propagate freshly-decided knockout matches into the next round's empty
+        # slots so each round opens for prediction as the previous one finishes.
+        result["advanced"] += bracket.advance_bracket(competition)
     # Match events first (uses the freshly-refreshed live state + official result),
     # then the prediction reminders.
     result.update(run_match_events(now))
