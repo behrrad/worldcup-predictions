@@ -10,6 +10,27 @@ name/slug live here, plus the small "test cup" used by `seed_test_tournament`.
 WC2026_NAME = "جام جهانی ۲۰۲۶"
 WC2026_SLUG = "world-cup-2026"
 
+# A starter shortlist of players for the individual-award bonus questions
+# (Golden Boot / Golden Ball). Loaded by `seed_player_candidates`, which links
+# each to its team by code (leaving the team blank if that code isn't seeded).
+# Curated from the tournament's Golden Boot / Golden Ball contenders (mid-2026);
+# the league admin can add/remove names in the admin at any time.
+# (Persian name, FIFA team code)
+WC2026_PLAYER_CANDIDATES = [
+    ("لیونل مسی", "ARG"),
+    ("کیلیان امباپه", "FRA"),
+    ("عثمان دمبله", "FRA"),
+    ("مایکل اولیز", "FRA"),
+    ("هری کین", "ENG"),
+    ("جود بلینگام", "ENG"),
+    ("ارلینگ هالند", "NOR"),
+    ("میکل اویارزابال", "ESP"),
+    ("اسماعیل صیباری", "MAR"),
+    ("وینیسیوس جونیور", "BRA"),
+    ("اسماعیلا سار", "SEN"),
+    ("خولیان کینیونس", "MEX"),
+]
+
 
 # --------------------------------------------------------------------------- #
 # Test tournament — a tiny competition with a COMPRESSED timeline (relative to
