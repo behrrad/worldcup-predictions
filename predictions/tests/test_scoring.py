@@ -8,14 +8,31 @@ Tier rules (highest applicable wins), then × stage multiplier:
   submitted but wrong ....... points_participation  (default 2)
   no prediction ............. 0
 """
+from datetime import timedelta
 from decimal import Decimal
 
 from django.test import TestCase
+from django.utils import timezone
 
 from predictions import consts, scoring
-from predictions.models import Membership, Prediction
+from predictions.models import (
+    BonusPrediction,
+    BonusScore,
+    MatchScore,
+    Membership,
+    PlayerCandidate,
+    Prediction,
+    TournamentOutcome,
+)
 
-from .factories import join, make_competition, make_league, make_match
+from .factories import (
+    join,
+    make_competition,
+    make_league,
+    make_match,
+    make_team,
+    make_user,
+)
 
 
 class OutcomeSignTests(TestCase):
@@ -430,3 +447,131 @@ class LiveLeaderboardTests(TestCase):
             by_mem[self.b_mem.id]["live_picks"],
             [{"match_id": playing.id, "home": None, "away": None}],
         )
+
+
+class BonusScoringTests(TestCase):
+    """Tournament-wide bonus picks: exact-match scoring, and the "who wins our
+    league" meta-pick scored against the frozen (match + outright) standings."""
+
+    def setUp(self):
+        self.comp = make_competition()
+        self.owner = make_user()
+        self.league = make_league(
+            self.comp, owner=self.owner,
+            bonus_lock_at=timezone.now() + timedelta(days=1),
+        )
+        self.alex = Membership.objects.get(league=self.league, user=self.owner)
+        self.champ_team = make_team(self.comp, name="تیم قهرمان")
+        self.other_team = make_team(self.comp, name="تیم دیگر")
+        # A dummy match to hang MatchScore rows on (stays unfinished, so no signal
+        # recompute overwrites the totals we set by hand).
+        self.match = make_match(self.comp)
+
+    def _set_match_points(self, membership, pts):
+        MatchScore.objects.update_or_create(
+            membership=membership, match=self.match,
+            defaults={"points": Decimal(pts), "tier": consts.Tier.WINNER},
+        )
+
+    def test_champion_pick_exact_match(self):
+        rival = join(self.league)
+        BonusPrediction.objects.create(
+            membership=self.alex, kind=consts.BonusKind.CHAMPION, team=self.champ_team)
+        BonusPrediction.objects.create(
+            membership=rival, kind=consts.BonusKind.CHAMPION, team=self.other_team)
+        TournamentOutcome.objects.create(competition=self.comp, champion=self.champ_team)
+
+        scoring.settle_bonus_scores(self.comp)
+
+        winner = BonusScore.objects.get(membership=self.alex, kind=consts.BonusKind.CHAMPION)
+        self.assertTrue(winner.correct)
+        self.assertEqual(winner.points, Decimal(consts.DEFAULT_POINTS_CHAMPION))
+        loser = BonusScore.objects.get(membership=rival, kind=consts.BonusKind.CHAMPION)
+        self.assertFalse(loser.correct)
+        self.assertEqual(loser.points, Decimal("0"))
+
+    def test_golden_boot_player_pick(self):
+        winner = PlayerCandidate.objects.create(competition=self.comp, name="بازیکن الف")
+        PlayerCandidate.objects.create(competition=self.comp, name="بازیکن ب")
+        BonusPrediction.objects.create(
+            membership=self.alex, kind=consts.BonusKind.GOLDEN_BOOT, player=winner)
+        TournamentOutcome.objects.create(competition=self.comp, golden_boot=winner)
+
+        scoring.settle_bonus_scores(self.comp)
+
+        score = BonusScore.objects.get(membership=self.alex, kind=consts.BonusKind.GOLDEN_BOOT)
+        self.assertTrue(score.correct)
+        self.assertEqual(score.points, Decimal(consts.DEFAULT_POINTS_GOLDEN_BOOT))
+
+    def test_league_winner_leapfrog_and_non_circular(self):
+        # Frozen standings from match points: Alex 30 > Brad 20 > Jack 10.
+        brad = join(self.league)
+        jack = join(self.league)
+        self._set_match_points(self.alex, 30)
+        self._set_match_points(brad, 20)
+        self._set_match_points(jack, 10)
+        # Big enough meta-pick to reshuffle the podium.
+        self.league.points_league_winner = 25
+        self.league.save(update_fields=["points_league_winner"])
+        # Picks: Jack -> Alex (the frozen #1), Alex -> Brad, Brad -> Brad.
+        kind = consts.BonusKind.LEAGUE_WINNER
+        BonusPrediction.objects.create(membership=jack, kind=kind, target_membership=self.alex)
+        BonusPrediction.objects.create(membership=self.alex, kind=kind, target_membership=brad)
+        BonusPrediction.objects.create(membership=brad, kind=kind, target_membership=brad)
+
+        scoring.settle_bonus_scores(self.comp)
+
+        # The frozen champion is Alex — the meta-pick is excluded from its own
+        # target, so Jack's +25 (which vaults him to the top) does NOT retroactively
+        # make Jack the champion. That non-circularity is exactly why Jack is right.
+        self.assertEqual(scoring._frozen_league_champion_id(self.league), self.alex.id)
+        jack_score = BonusScore.objects.get(membership=jack, kind=kind)
+        self.assertTrue(jack_score.correct)
+        self.assertEqual(jack_score.points, Decimal(25))
+        self.assertFalse(BonusScore.objects.get(membership=self.alex, kind=kind).correct)
+        self.assertFalse(BonusScore.objects.get(membership=brad, kind=kind).correct)
+
+        # Final leaderboard: Jack leapfrogs to #1 (10 + 25 = 35 > Alex's 30).
+        rows = {r["membership"].id: r for r in scoring.leaderboard(self.league)}
+        self.assertEqual(rows[jack.id]["total"], Decimal("35.00"))
+        self.assertEqual(rows[jack.id]["match_total"], Decimal("10.00"))
+        self.assertEqual(rows[jack.id]["bonus_total"], Decimal("25.00"))
+        self.assertEqual(rows[jack.id]["rank"], 1)
+        self.assertEqual(rows[self.alex.id]["rank"], 2)
+        self.assertEqual(rows[brad.id]["rank"], 3)
+
+    def test_self_pick_allowed_and_scored(self):
+        brad = join(self.league)
+        self._set_match_points(self.alex, 30)
+        self._set_match_points(brad, 10)
+        BonusPrediction.objects.create(
+            membership=self.alex, kind=consts.BonusKind.LEAGUE_WINNER,
+            target_membership=self.alex,  # backing yourself
+        )
+        scoring.settle_bonus_scores(self.comp)
+        score = BonusScore.objects.get(
+            membership=self.alex, kind=consts.BonusKind.LEAGUE_WINNER)
+        self.assertTrue(score.correct)
+        self.assertEqual(score.points, Decimal(consts.DEFAULT_POINTS_LEAGUE_WINNER))
+
+    def test_settle_is_idempotent(self):
+        BonusPrediction.objects.create(
+            membership=self.alex, kind=consts.BonusKind.CHAMPION, team=self.champ_team)
+        TournamentOutcome.objects.create(competition=self.comp, champion=self.champ_team)
+        scoring.settle_bonus_scores(self.comp)
+        scoring.settle_bonus_scores(self.comp)
+        self.assertEqual(
+            BonusScore.objects.filter(
+                membership=self.alex, kind=consts.BonusKind.CHAMPION).count(),
+            1,
+        )
+
+    def test_bonus_absent_leaves_leaderboard_unchanged(self):
+        # No bonus scores settled: total == match_total, ordering as before.
+        brad = join(self.league)
+        self._set_match_points(self.alex, 15)
+        self._set_match_points(brad, 5)
+        rows = {r["membership"].id: r for r in scoring.leaderboard(self.league)}
+        self.assertEqual(rows[self.alex.id]["total"], Decimal("15.00"))
+        self.assertEqual(rows[self.alex.id]["bonus_total"], Decimal("0.00"))
+        self.assertEqual(rows[self.alex.id]["rank"], 1)

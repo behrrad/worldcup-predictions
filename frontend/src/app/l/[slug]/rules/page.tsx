@@ -93,6 +93,56 @@ export default async function Rules({
             : "مدیر این مسابقه نمایش پیش‌بینی دیگران را خاموش کرده است؛ پیش‌بینی هر کس فقط برای خودش قابل دیدن است."}
         </p>
       </div>
+
+      {s.bonus_enabled && (
+        <div className="card">
+          <h2 className="card-title">🏆 پیش‌بینی‌های ویژه (قهرمانی)</h2>
+          <p className="muted">
+            جدا از بازی‌ها، چند سؤال دربارهٔ کل تورنمنت هم هست. برای هر کدام یک
+            گزینه انتخاب می‌کنی و اگر درست باشد، امتیاز کاملش را می‌گیری (جواب
+            اشتباه صفر):
+          </p>
+          <table className="rules-table">
+            <tbody>
+              <tr>
+                <td>قهرمان جام</td>
+                <td className="big">{fa(s.points_champion)}</td>
+              </tr>
+              <tr>
+                <td>نایب‌قهرمان</td>
+                <td className="big">{fa(s.points_runner_up)}</td>
+              </tr>
+              <tr>
+                <td>تیم سوم</td>
+                <td className="big">{fa(s.points_third)}</td>
+              </tr>
+              <tr>
+                <td>تیم چهارم</td>
+                <td className="big">{fa(s.points_fourth)}</td>
+              </tr>
+              <tr>
+                <td>آقای گل (بهترین گلزن)</td>
+                <td className="big">{fa(s.points_golden_boot)}</td>
+              </tr>
+              <tr>
+                <td>بهترین بازیکن تورنمنت</td>
+                <td className="big">{fa(s.points_golden_ball)}</td>
+              </tr>
+              <tr>
+                <td>قهرمان مسابقهٔ ما</td>
+                <td className="big">{fa(s.points_league_winner)}</td>
+              </tr>
+            </tbody>
+          </table>
+          <p className="muted mt">
+            «قهرمان مسابقهٔ ما» فرق دارد: حدس می‌زنی چه کسی در همین مسابقه اول
+            می‌شود. این امتیاز در <strong>آخرین مرحله</strong> و روی جدول (امتیاز
+            بازی‌ها + بقیهٔ پیش‌بینی‌های قهرمانی) اعمال می‌شود، بنابراین می‌تواند
+            جدول را جابه‌جا کند — حتی ممکن است کسی که درست حدس زده خودش قهرمان
+            شود. انتخاب خودت هم مجاز است.
+          </p>
+        </div>
+      )}
     </>
   );
 }

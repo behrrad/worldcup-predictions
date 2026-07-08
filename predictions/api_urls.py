@@ -29,6 +29,8 @@ urlpatterns = [
     path("leagues/<str:slug>/members/", api_views.league_members, name="api_league_members"),
     path("leagues/<str:slug>/predictions/", api_views.submit_predictions, name="api_submit_predictions"),
     path("leagues/<str:slug>/leaderboard/", api_views.league_leaderboard, name="api_leaderboard"),
+    # Tournament-wide bonus predictions (champion, Golden Boot/Ball, league winner).
+    path("leagues/<str:slug>/bonus/", api_views.league_bonus, name="api_league_bonus"),
     path("leagues/<str:slug>/recap/", api_views.league_recap, name="api_league_recap"),
     path("leagues/<str:slug>/fun-stats/", api_views.league_fun_stats, name="api_league_fun_stats"),
     # Points & rank progression per finished match — the player-toggle line chart.

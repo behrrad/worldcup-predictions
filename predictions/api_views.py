@@ -22,13 +22,17 @@ from rest_framework.response import Response
 from accounts import consts as acc_consts
 from . import consts, export, fun_stats, live, recap, results_sync, scoring, telegram
 from .models import (
+    BonusPrediction,
+    BonusScore,
     Competition,
     League,
     Match,
     MatchScore,
     Membership,
+    PlayerCandidate,
     Prediction,
     Team,
+    TournamentOutcome,
 )
 from .throttles import EXPORT_THROTTLES, JOIN_LEAGUE_THROTTLES, PREDICT_THROTTLES
 
@@ -175,6 +179,16 @@ def _league_dict(league, membership, request):
                 }
                 for stage in consts.STAGE_ORDER
             ],
+            # Tournament-wide bonus questions (enabled per league via bonus_lock_at).
+            "bonus_enabled": league.bonus_enabled,
+            "bonus_lock_at": league.bonus_lock_at.isoformat() if league.bonus_lock_at else None,
+            "points_champion": league.points_champion,
+            "points_runner_up": league.points_runner_up,
+            "points_third": league.points_third,
+            "points_fourth": league.points_fourth,
+            "points_golden_boot": league.points_golden_boot,
+            "points_golden_ball": league.points_golden_ball,
+            "points_league_winner": league.points_league_winner,
         },
     }
 
@@ -599,6 +613,10 @@ def league_leaderboard(request, slug):
                 "rank": row["rank"],
                 "name": row["name"],
                 "total": float(row["total"]),
+                # Split of the total: per-match points vs. settled bonus points
+                # (bonus_total is 0 until the tournament bonus is settled).
+                "match_total": float(row["match_total"]),
+                "bonus_total": float(row["bonus_total"]),
                 "played": row["played"],
                 "exact_count": row["exact_count"],
                 "is_me": row["membership"].user_id == request.user.id,
@@ -614,6 +632,164 @@ def league_leaderboard(request, slug):
             for row in rows
         ],
     })
+
+
+# --------------------------------------------------------------------------- #
+# Tournament-wide bonus predictions
+# --------------------------------------------------------------------------- #
+def _player_candidate(pc):
+    return {"id": pc.id, "name": pc.name, "team": _team(pc.team)}
+
+
+def _bonus_pick_value(pred, kind):
+    """The selected option id for a member's pick (team / player / membership id),
+    or None when nothing is picked."""
+    if pred is None:
+        return None
+    answer_type = consts.BONUS_ANSWER_TYPE[kind]
+    if answer_type == consts.BonusAnswerType.TEAM:
+        return pred.team_id
+    if answer_type == consts.BonusAnswerType.PLAYER:
+        return pred.player_id
+    return pred.target_membership_id
+
+
+def _resolve_bonus_value(answer_type, value, competition, league):
+    """Turn a submitted option id into the referenced object, scoped to the
+    league's competition (teams/players) or the league itself (members). Returns
+    None for an invalid/foreign id, so the caller can skip it."""
+    try:
+        vid = int(value)
+    except (TypeError, ValueError):
+        return None
+    if answer_type == consts.BonusAnswerType.TEAM:
+        return Team.objects.filter(id=vid, competition=competition).first()
+    if answer_type == consts.BonusAnswerType.PLAYER:
+        return PlayerCandidate.objects.filter(id=vid, competition=competition).first()
+    if answer_type == consts.BonusAnswerType.MEMBER:
+        return Membership.objects.filter(id=vid, league=league).first()
+    return None
+
+
+def _bonus_payload(request, membership, league, now):
+    competition = league.competition
+    preds = {p.kind: p for p in BonusPrediction.objects.filter(membership=membership)}
+    outcome = TournamentOutcome.objects.filter(competition=competition).first()
+    settled = outcome is not None and outcome.settled_at is not None
+    my_scores = (
+        {s.kind: s for s in BonusScore.objects.filter(membership=membership)}
+        if settled else {}
+    )
+    # The frozen-standings winner is only meaningful once settled (it's the
+    # answer the "who wins our league" pick was scored against).
+    frozen_champ_id = scoring._frozen_league_champion_id(league) if settled else None
+
+    members = [
+        {"id": m.id, "name": m.user.public_name, "is_me": m.user_id == request.user.id}
+        for m in Membership.objects.filter(league=league).select_related("user")
+    ]
+
+    questions = []
+    for kind in consts.BONUS_KIND_ORDER:
+        answer_type = consts.BONUS_ANSWER_TYPE[kind]
+        correct_id = None
+        if settled:
+            if kind == consts.BonusKind.LEAGUE_WINNER:
+                correct_id = frozen_champ_id
+            else:
+                answer = outcome.answer_for(kind)
+                correct_id = answer.id if answer else None
+        score = my_scores.get(kind)
+        questions.append({
+            "kind": kind,
+            "label": consts.BONUS_KIND_LABELS[kind],
+            "description": consts.BONUS_KIND_DESCRIPTIONS[kind],
+            "answer_type": answer_type,
+            "points": league.bonus_points_for(kind),
+            "my_pick": _bonus_pick_value(preds.get(kind), kind),
+            "correct": correct_id,
+            "my_correct": score.correct if score else None,
+            "my_points": float(score.points) if score else None,
+        })
+
+    return {
+        "enabled": league.bonus_enabled,
+        "is_open": league.bonus_is_open(now),
+        "lock_at": league.bonus_lock_at.isoformat() if league.bonus_lock_at else None,
+        "settled": settled,
+        # Option lists for the three answer types.
+        "teams": [
+            _team(t) for t in competition.teams.select_related().order_by("group", "name_fa")
+        ],
+        "players": [
+            _player_candidate(pc)
+            for pc in competition.player_candidates.select_related("team").all()
+        ],
+        "members": members,
+        "questions": questions,
+    }
+
+
+def _submit_bonus(request, membership, league, now):
+    if not league.bonus_enabled:
+        raise ValidationError({"detail": consts.MSG_BONUS_NOT_ENABLED})
+    if not league.bonus_is_open(now):
+        raise ValidationError({"detail": consts.MSG_BONUS_LOCKED})
+
+    items = request.data.get("picks", [])
+    if not isinstance(items, list):
+        raise ValidationError({"picks": consts.MSG_BONUS_BAD_FORMAT})
+
+    competition = league.competition
+    saved = 0
+    for item in items:
+        if not isinstance(item, dict):
+            continue
+        kind = item.get("kind")
+        if kind not in consts.BONUS_POINTS_FIELD:
+            continue
+        value = item.get("value")
+        # Empty value clears the pick.
+        if value in (None, "", 0):
+            BonusPrediction.objects.filter(membership=membership, kind=kind).delete()
+            saved += 1
+            continue
+        answer_type = consts.BONUS_ANSWER_TYPE[kind]
+        obj = _resolve_bonus_value(answer_type, value, competition, league)
+        if obj is None:
+            continue
+        # Set only the FK for this kind; clear the others so switching a pick
+        # never leaves a stale reference behind.
+        defaults = {"team": None, "player": None, "target_membership": None}
+        if answer_type == consts.BonusAnswerType.TEAM:
+            defaults["team"] = obj
+        elif answer_type == consts.BonusAnswerType.PLAYER:
+            defaults["player"] = obj
+        else:
+            defaults["target_membership"] = obj
+        BonusPrediction.objects.update_or_create(
+            membership=membership, kind=kind, defaults=defaults,
+        )
+        saved += 1
+
+    return Response({"saved": saved})
+
+
+@api_view(["GET", "POST"])
+@throttle_classes(PREDICT_THROTTLES)
+def league_bonus(request, slug):
+    """Read the tournament-wide bonus questions (with the member's picks and,
+    once settled, the correct answers + points earned), or POST picks to save.
+
+    POST body: {"picks": [{"kind": "champion", "value": <option id>}, ...]},
+    where `value` is a team / player-candidate / membership id per the question's
+    answer type. Picks are only accepted while the league's bonus window is open."""
+    membership = _get_membership(request, slug)
+    league = membership.league
+    now = timezone.now()
+    if request.method == "POST":
+        return _submit_bonus(request, membership, league, now)
+    return Response(_bonus_payload(request, membership, league, now))
 
 
 @api_view(["GET"])

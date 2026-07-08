@@ -260,6 +260,26 @@ class League(models.Model):
         consts.L_MULT_FINAL, max_digits=4, decimal_places=2,
         default=consts.DEFAULT_KNOCKOUT_MULTIPLIER)
 
+    # Tournament-wide "bonus" predictions (champion, Golden Boot, "who wins our
+    # league", ...). Opt-in per league: `bonus_lock_at` set = the feature is on
+    # and picks are editable until that moment; null = off. See predictions/consts.py.
+    bonus_lock_at = models.DateTimeField(
+        consts.L_BONUS_LOCK_AT, null=True, blank=True, help_text=consts.HELP_BONUS_LOCK_AT)
+    points_champion = models.IntegerField(
+        consts.L_POINTS_CHAMPION, default=consts.DEFAULT_POINTS_CHAMPION)
+    points_runner_up = models.IntegerField(
+        consts.L_POINTS_RUNNER_UP, default=consts.DEFAULT_POINTS_RUNNER_UP)
+    points_third = models.IntegerField(
+        consts.L_POINTS_THIRD, default=consts.DEFAULT_POINTS_THIRD)
+    points_fourth = models.IntegerField(
+        consts.L_POINTS_FOURTH, default=consts.DEFAULT_POINTS_FOURTH)
+    points_golden_boot = models.IntegerField(
+        consts.L_POINTS_GOLDEN_BOOT, default=consts.DEFAULT_POINTS_GOLDEN_BOOT)
+    points_golden_ball = models.IntegerField(
+        consts.L_POINTS_GOLDEN_BALL, default=consts.DEFAULT_POINTS_GOLDEN_BALL)
+    points_league_winner = models.IntegerField(
+        consts.L_POINTS_LEAGUE_WINNER, default=consts.DEFAULT_POINTS_LEAGUE_WINNER)
+
     is_active = models.BooleanField(consts.L_IS_ACTIVE, default=True)
     created_at = models.DateTimeField(consts.L_CREATED_AT, auto_now_add=True)
 
@@ -309,6 +329,23 @@ class League(models.Model):
 
     def multiplier_for(self, stage: str):
         return self._stage_multiplier_map.get(stage, consts.DEFAULT_GROUP_MULTIPLIER)
+
+    # -- bonus (tournament-wide) predictions ------------------------------- #
+    @property
+    def bonus_enabled(self) -> bool:
+        """The feature is on for this league once a lock deadline is set."""
+        return self.bonus_lock_at is not None
+
+    def bonus_is_open(self, now=None) -> bool:
+        """Can bonus picks still be submitted/edited (feature on and before lock)?"""
+        if self.bonus_lock_at is None:
+            return False
+        now = now or timezone.now()
+        return now < self.bonus_lock_at
+
+    def bonus_points_for(self, kind: str) -> int:
+        """The configured points for one bonus question."""
+        return getattr(self, consts.BONUS_POINTS_FIELD[kind])
 
 
 class Membership(models.Model):
@@ -402,6 +439,178 @@ class MatchScore(models.Model):
 
     def __str__(self):
         return f"{self.membership.user.public_name}: {self.points}"
+
+
+# --------------------------------------------------------------------------- #
+# Tournament-wide "bonus" predictions (predictions/scoring.py settle_bonus_scores)
+# --------------------------------------------------------------------------- #
+class PlayerCandidate(models.Model):
+    """A named player eligible to be picked for the individual awards (Golden
+    Boot / Ball). There is no full player roster in the data, so the competition
+    admin curates a short shortlist; members pick from it and the winner is
+    recorded by choosing from the same list — keeping the whole flow an exact
+    reference match instead of fuzzy free-text names."""
+
+    competition = models.ForeignKey(
+        Competition, on_delete=models.CASCADE, related_name="player_candidates",
+        verbose_name=consts.L_COMPETITION,
+    )
+    name = models.CharField(consts.L_PLAYER_CANDIDATE_NAME, max_length=120)
+    team = models.ForeignKey(
+        Team, on_delete=models.SET_NULL, null=True, blank=True,
+        related_name="+", verbose_name=consts.L_TEAM_NAME_FA,
+    )
+
+    class Meta:
+        verbose_name = consts.V_PLAYER_CANDIDATE
+        verbose_name_plural = consts.V_PLAYER_CANDIDATE_PLURAL
+        ordering = ["name"]
+        constraints = [
+            models.UniqueConstraint(
+                fields=["competition", "name"], name="unique_candidate_per_competition"
+            ),
+        ]
+
+    def __str__(self):
+        return self.name
+
+
+class TournamentOutcome(models.Model):
+    """The answer key for a competition's bonus questions — who actually won.
+
+    Filled in by the admin at tournament end (the place fields can be
+    auto-filled from the final / third-place results). Scoring reads it in
+    scoring.settle_bonus_scores; `settled_at` records the last settlement."""
+
+    competition = models.OneToOneField(
+        Competition, on_delete=models.CASCADE, related_name="outcome",
+        verbose_name=consts.L_COMPETITION,
+    )
+    champion = models.ForeignKey(
+        Team, on_delete=models.SET_NULL, null=True, blank=True,
+        related_name="+", verbose_name=consts.L_CHAMPION,
+    )
+    runner_up = models.ForeignKey(
+        Team, on_delete=models.SET_NULL, null=True, blank=True,
+        related_name="+", verbose_name=consts.L_RUNNER_UP,
+    )
+    third_place = models.ForeignKey(
+        Team, on_delete=models.SET_NULL, null=True, blank=True,
+        related_name="+", verbose_name=consts.L_THIRD_PLACE,
+    )
+    fourth_place = models.ForeignKey(
+        Team, on_delete=models.SET_NULL, null=True, blank=True,
+        related_name="+", verbose_name=consts.L_FOURTH_PLACE,
+    )
+    golden_boot = models.ForeignKey(
+        PlayerCandidate, on_delete=models.SET_NULL, null=True, blank=True,
+        related_name="+", verbose_name=consts.L_GOLDEN_BOOT,
+    )
+    golden_ball = models.ForeignKey(
+        PlayerCandidate, on_delete=models.SET_NULL, null=True, blank=True,
+        related_name="+", verbose_name=consts.L_GOLDEN_BALL,
+    )
+    settled_at = models.DateTimeField(consts.L_SETTLED_AT, null=True, blank=True)
+
+    class Meta:
+        verbose_name = consts.V_TOURNAMENT_OUTCOME
+        verbose_name_plural = consts.V_TOURNAMENT_OUTCOME_PLURAL
+
+    def __str__(self):
+        return f"{self.competition.name}"
+
+    def answer_for(self, kind: str):
+        """The correct answer object (Team or PlayerCandidate) for an
+        outcome-based bonus kind, or None if not recorded yet."""
+        return getattr(self, consts.BONUS_OUTCOME_FIELD[kind], None)
+
+
+class BonusPrediction(models.Model):
+    """One member's pick for one bonus question (per membership, per kind).
+
+    The answer is polymorphic by `kind`: a team (champion/2nd/3rd/4th), a
+    shortlisted player (Golden Boot/Ball), or another league member (the "who
+    wins our league" meta-pick — may be oneself). Exactly one of the three FKs
+    is set for a given row."""
+
+    membership = models.ForeignKey(
+        Membership, on_delete=models.CASCADE, related_name="bonus_predictions",
+        verbose_name=consts.L_MEMBERSHIP,
+    )
+    kind = models.CharField(
+        consts.L_BONUS_KIND, max_length=consts.BONUS_KIND_MAX_LENGTH,
+        choices=consts.BONUS_KIND_CHOICES,
+    )
+    team = models.ForeignKey(
+        Team, on_delete=models.SET_NULL, null=True, blank=True,
+        related_name="+", verbose_name=consts.L_BONUS_TEAM,
+    )
+    player = models.ForeignKey(
+        PlayerCandidate, on_delete=models.SET_NULL, null=True, blank=True,
+        related_name="+", verbose_name=consts.L_BONUS_PLAYER,
+    )
+    target_membership = models.ForeignKey(
+        Membership, on_delete=models.CASCADE, null=True, blank=True,
+        related_name="+", verbose_name=consts.L_BONUS_TARGET_MEMBERSHIP,
+    )
+    created_at = models.DateTimeField(consts.L_CREATED_AT, auto_now_add=True)
+    updated_at = models.DateTimeField(consts.L_UPDATED_AT, auto_now=True)
+
+    class Meta:
+        verbose_name = consts.V_BONUS_PREDICTION
+        verbose_name_plural = consts.V_BONUS_PREDICTION_PLURAL
+        ordering = ["kind"]
+        constraints = [
+            models.UniqueConstraint(
+                fields=["membership", "kind"], name="unique_bonus_prediction_per_kind"
+            ),
+        ]
+
+    def __str__(self):
+        return f"{self.membership.user.public_name}: {self.kind}"
+
+    def pick_object(self):
+        """The chosen option for this row's kind (Team / PlayerCandidate /
+        Membership), or None when nothing valid is selected."""
+        answer_type = consts.BONUS_ANSWER_TYPE.get(self.kind)
+        if answer_type == consts.BonusAnswerType.TEAM:
+            return self.team
+        if answer_type == consts.BonusAnswerType.PLAYER:
+            return self.player
+        if answer_type == consts.BonusAnswerType.MEMBER:
+            return self.target_membership
+        return None
+
+
+class BonusScore(models.Model):
+    """The points a member earned on one bonus question (per membership, per
+    kind), written by scoring.settle_bonus_scores and summed into the
+    leaderboard total alongside MatchScore."""
+
+    membership = models.ForeignKey(
+        Membership, on_delete=models.CASCADE, related_name="bonus_scores",
+        verbose_name=consts.L_MEMBERSHIP,
+    )
+    kind = models.CharField(
+        consts.L_BONUS_KIND, max_length=consts.BONUS_KIND_MAX_LENGTH,
+        choices=consts.BONUS_KIND_CHOICES,
+    )
+    points = models.DecimalField(consts.L_POINTS, max_digits=6, decimal_places=2, default=0)
+    correct = models.BooleanField(consts.L_BONUS_CORRECT, default=False)
+    computed_at = models.DateTimeField(consts.L_COMPUTED_AT, auto_now=True)
+
+    class Meta:
+        verbose_name = consts.V_BONUS_SCORE
+        verbose_name_plural = consts.V_BONUS_SCORE_PLURAL
+        ordering = ["kind"]
+        constraints = [
+            models.UniqueConstraint(
+                fields=["membership", "kind"], name="unique_bonus_score_per_kind"
+            ),
+        ]
+
+    def __str__(self):
+        return f"{self.membership.user.public_name}: {self.kind} {self.points}"
 
 
 # --------------------------------------------------------------------------- #
