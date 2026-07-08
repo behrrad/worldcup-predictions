@@ -1,5 +1,6 @@
 import { serverFetch } from "@/lib/server";
 import { fa } from "@/lib/format";
+import { advancerTeamName } from "@/lib/match";
 import { LocalDateTime } from "@/components/LocalTime";
 import type { MatchDetailResp } from "@/lib/types";
 
@@ -41,12 +42,39 @@ export default async function MatchDetail({
             <span>{m.away_team?.name ?? m.away_label ?? "؟"}</span>
           </div>
         </div>
+        {m.penalty_winner && (
+          <p className="center muted">
+            🥅 صعود{" "}
+            <strong>
+              {advancerTeamName(m.penalty_winner, m.home_team, m.away_team)}
+            </strong>{" "}
+            با ضربات پنالتی
+          </p>
+        )}
+        {!m.counts_for_scoring && (
+          <p className="center mt">
+            <span className="no-score-badge">
+              🚫 این بازی در امتیازها حساب نمی‌شود
+            </span>
+          </p>
+        )}
         {m.my_prediction && (
           <p className="center mt">
             پیش‌بینی تو:{" "}
             <strong>
               {fa(m.my_prediction.home)} : {fa(m.my_prediction.away)}
             </strong>
+            {m.my_prediction.advancer && (
+              <span className="muted">
+                {" "}
+                — صعود:{" "}
+                {advancerTeamName(
+                  m.my_prediction.advancer,
+                  m.home_team,
+                  m.away_team,
+                )}
+              </span>
+            )}
           </p>
         )}
       </div>
@@ -90,7 +118,15 @@ export default async function MatchDetail({
                     </td>
                     <td>
                       {data.revealed ? (
-                        `${fa(p.home!)} : ${fa(p.away!)}`
+                        <>
+                          {fa(p.home!)} : {fa(p.away!)}
+                          {p.advancer && (
+                            <span className="muted">
+                              {" "}
+                              ↑{advancerTeamName(p.advancer, m.home_team, m.away_team)}
+                            </span>
+                          )}
+                        </>
                       ) : (
                         <span className="muted" title="پس از بسته‌شدن نمایش داده می‌شود">
                           🔒

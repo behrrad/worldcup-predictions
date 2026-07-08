@@ -79,6 +79,44 @@ export default async function Rules({
       </div>
 
       <div className="card">
+        <h2 className="card-title">🥅 مراحل حذفی و ضربات پنالتی</h2>
+        <p className="muted">
+          پیش‌بینی بازی‌های حذفی بر اساس نتیجهٔ پایان{" "}
+          <strong>۱۲۰ دقیقه</strong> (وقت قانونی + وقت اضافه) سنجیده می‌شود. اگر
+          بازی به پنالتی نرسد، مثل جدول بالا امتیاز داده می‌شود. اگر در پایان ۱۲۰
+          دقیقه مساوی شد و کار به پنالتی کشید و تو هم مساوی پیش‌بینی کرده بودی،
+          باید صعودکننده را هم انتخاب کنی:
+        </p>
+        <table className="rules-table">
+          <tbody>
+            <tr>
+              <td>نتیجهٔ دقیقِ مساوی + صعودکنندهٔ درست</td>
+              <td className="big">{fa(s.points_exact)}</td>
+            </tr>
+            <tr>
+              <td>نتیجهٔ دقیقِ مساوی، صعودکنندهٔ اشتباه</td>
+              <td className="big">{fa(s.points_correct_diff)}</td>
+            </tr>
+            <tr>
+              <td>مساویِ غیردقیق + صعودکنندهٔ درست</td>
+              <td className="big">{fa(s.points_correct_diff)}</td>
+            </tr>
+            <tr>
+              <td>مساویِ غیردقیق، صعودکنندهٔ اشتباه</td>
+              <td className="big">{fa(s.points_correct_winner)}</td>
+            </tr>
+          </tbody>
+        </table>
+        <p className="muted mt">
+          نکته: اگر مساوی پیش‌بینی کنی، فقط زمانی بیشتر از{" "}
+          {fa(s.points_participation)} امتیاز می‌گیری که برندهٔ بازی با ضربات
+          پنالتی مشخص شود؛ در غیر این صورت پیش‌بینیِ مساوی فقط امتیاز «ثبت
+          پیش‌بینی» را دارد. این امتیازها هم مثل بقیهٔ مراحل حذفی در ضریب همان
+          مرحله ضرب می‌شوند.
+        </p>
+      </div>
+
+      <div className="card">
         <h2 className="card-title">⏰ زمان بسته‌شدن پیش‌بینی</h2>
         <p>
           پیش‌بینی هر بازی{" "}

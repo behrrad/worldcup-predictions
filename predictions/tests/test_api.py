@@ -249,6 +249,67 @@ class SubmitPredictionsTests(AuthedTestCase):
         self.assertEqual(res.json()["saved"], 0)
 
 
+class AdvancerSubmitTests(AuthedTestCase):
+    """The knockout-draw advancer pick on prediction submit + read-back."""
+
+    def setUp(self):
+        super().setUp()
+        self.league = make_league(self.comp, owner=self.user)
+        self.now = timezone.now()
+        self.url = reverse("api_submit_predictions", args=[self.league.slug])
+
+    def _ko_match(self):
+        return make_match(self.comp, stage=consts.Stage.ROUND_OF_16,
+                          kickoff=self.now + timedelta(hours=2))
+
+    def _post(self, m, home, away, advancer=None):
+        item = {"match_id": m.id, "home": home, "away": away}
+        if advancer is not None:
+            item["advancer"] = advancer
+        return self.client.post(self.url, {"predictions": [item]}, format="json")
+
+    def test_advancer_saved_on_knockout_draw(self):
+        m = self._ko_match()
+        self.assertEqual(self._post(m, 1, 1, "HOME").json()["saved"], 1)
+        self.assertEqual(
+            Prediction.objects.get(match=m).predicted_advancer, consts.Advancer.HOME)
+
+    def test_advancer_cleared_on_non_draw(self):
+        m = self._ko_match()
+        self._post(m, 2, 1, "HOME")
+        self.assertEqual(
+            Prediction.objects.get(match=m).predicted_advancer, consts.Advancer.NONE)
+
+    def test_advancer_ignored_on_group_draw(self):
+        m = make_match(self.comp, stage=consts.Stage.GROUP,
+                       kickoff=self.now + timedelta(hours=2))
+        self._post(m, 1, 1, "AWAY")
+        self.assertEqual(
+            Prediction.objects.get(match=m).predicted_advancer, consts.Advancer.NONE)
+
+    def test_invalid_advancer_value_normalized_to_blank(self):
+        m = self._ko_match()
+        self._post(m, 0, 0, "garbage")
+        self.assertEqual(
+            Prediction.objects.get(match=m).predicted_advancer, consts.Advancer.NONE)
+
+    def test_updating_draw_to_winner_clears_stale_advancer(self):
+        m = self._ko_match()
+        self._post(m, 1, 1, "HOME")
+        self._post(m, 2, 0)  # decisive scoreline, no advancer
+        p = Prediction.objects.get(match=m)
+        self.assertEqual((p.predicted_home, p.predicted_away), (2, 0))
+        self.assertEqual(p.predicted_advancer, consts.Advancer.NONE)
+
+    def test_my_prediction_exposes_advancer(self):
+        m = self._ko_match()
+        self._post(m, 1, 1, "AWAY")
+        body = self.client.get(
+            reverse("api_league_matches", args=[self.league.slug])).json()
+        row = next(x for x in body if x["id"] == m.id)
+        self.assertEqual(row["my_prediction"]["advancer"], "AWAY")
+
+
 class LeaderboardApiTests(AuthedTestCase):
     def test_leaderboard_reflects_scores(self):
         league = make_league(self.comp, owner=self.user)
@@ -467,6 +528,15 @@ class LeagueMatchesApiTests(AuthedTestCase):
         k = next(m for m in res.json() if m["id"] == ko.id)
         self.assertEqual(k["home_label"], consts.BRACKET_UNKNOWN)
         self.assertEqual(k["away_label"], consts.BRACKET_UNKNOWN)
+
+    def test_counts_for_scoring_flag_in_payload(self):
+        normal = make_match(self.comp, kickoff=timezone.now() + timedelta(days=1))
+        voided = make_match(self.comp, kickoff=timezone.now() + timedelta(days=2),
+                            count_for_scoring=False)
+        res = self.client.get(reverse("api_league_matches", args=[self.league.slug]))
+        by_id = {m["id"]: m for m in res.json()}
+        self.assertTrue(by_id[normal.id]["counts_for_scoring"])
+        self.assertFalse(by_id[voided.id]["counts_for_scoring"])
 
 
 class ProfileMeTests(AuthedTestCase):

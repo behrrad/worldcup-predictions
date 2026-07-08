@@ -7,7 +7,7 @@ from django.db import migrations, models
 class Migration(migrations.Migration):
 
     dependencies = [
-        ('predictions', '0012_alter_notificationlog_kind'),
+        ('predictions', '0014_match_count_for_scoring'),
     ]
 
     operations = [

@@ -61,10 +61,12 @@ class TeamAdmin(ModelAdmin):
 class MatchAdmin(ModelAdmin):
     list_display = (
         "match_label", "stage", "kickoff", "home_score", "away_score", "status",
+        "count_for_scoring",
     )
     list_display_links = ("match_label",)
-    list_editable = ("home_score", "away_score")  # enter results right in the list
-    list_filter = ("competition", "stage", "status")
+    # Enter results / void a match from scoring right in the list.
+    list_editable = ("home_score", "away_score", "count_for_scoring")
+    list_filter = ("competition", "stage", "status", "count_for_scoring")
     search_fields = ("home_team__name_fa", "away_team__name_fa")
     autocomplete_fields = ("home_team", "away_team")
     date_hierarchy = "kickoff"

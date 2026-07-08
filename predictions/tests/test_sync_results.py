@@ -111,6 +111,94 @@ class SyncResultsTests(TestCase):
                 call_command("sync_results", token="t", competition="nope", verbosity=0)
 
 
+def api_pen_match(home_tla, away_tla, *, level_home, level_away,
+                  pen_home, pen_away, winner, home_name="", away_name="",
+                  utc="2026-06-28T19:00:00Z", include_penalties=True):
+    """A FINISHED penalty-shootout final. The source's fullTime carries the
+    shootout goals on top of the 120' (level) score, so fullTime = level +
+    penalties — exactly what normalize() has to strip back out."""
+    score = {
+        "duration": consts.FOOTBALL_DATA_PENALTY,
+        "winner": winner,
+        "regularTime": {"home": level_home, "away": level_away},
+        "fullTime": {"home": level_home + pen_home, "away": level_away + pen_away},
+    }
+    if include_penalties:
+        score["penalties"] = {"home": pen_home, "away": pen_away}
+    return {
+        "status": "FINISHED", "utcDate": utc,
+        "homeTeam": {"tla": home_tla, "name": home_name},
+        "awayTeam": {"tla": away_tla, "name": away_name},
+        "score": score,
+    }
+
+
+class NormalizePenaltiesTests(TestCase):
+    """normalize() recovers the 120' draw and the advancing side from a shootout."""
+
+    def test_strips_shootout_goals_and_records_winner(self):
+        from predictions.results_sync import normalize
+        [r] = normalize({"matches": [api_pen_match(
+            "ARG", "FRA", level_home=1, level_away=1,
+            pen_home=2, pen_away=4, winner=consts.FOOTBALL_DATA_WINNER_AWAY)]})
+        self.assertEqual((r["home_score"], r["away_score"]), (1, 1))
+        self.assertEqual(r["penalty_winner"], consts.Advancer.AWAY)
+
+    def test_regular_match_has_no_penalty_winner(self):
+        from predictions.results_sync import normalize
+        [r] = normalize({"matches": [api_match("MEX", "RSA", 2, 1)]})
+        self.assertEqual((r["home_score"], r["away_score"]), (2, 1))
+        self.assertEqual(r["penalty_winner"], consts.Advancer.NONE)
+
+    def test_falls_back_to_regular_time_without_penalties_split(self):
+        # No penalties sub-object: fall back to regularTime for the level score.
+        from predictions.results_sync import normalize
+        [r] = normalize({"matches": [api_pen_match(
+            "ARG", "FRA", level_home=2, level_away=2,
+            pen_home=3, pen_away=1, winner=consts.FOOTBALL_DATA_WINNER_HOME,
+            include_penalties=False)]})
+        self.assertEqual((r["home_score"], r["away_score"]), (2, 2))
+        self.assertEqual(r["penalty_winner"], consts.Advancer.HOME)
+
+
+class ApplyPenaltyResultTests(TestCase):
+    """The shootout result, applied to a knockout match, finalizes + scores it."""
+
+    def setUp(self):
+        self.comp = make_competition()
+        self.home = make_team(self.comp, name="آرژانتین", code="ARG", name_en="Argentina")
+        self.away = make_team(self.comp, name="فرانسه", code="FRA", name_en="France")
+        self.match = make_match(
+            self.comp, home=self.home, away=self.away, match_number=99,
+            stage=consts.Stage.FINAL,
+            kickoff=datetime(2026, 7, 19, 19, 0, tzinfo=utc_tz.utc),
+        )
+        self.user = make_user()
+        self.league = League.objects.create(name="L", competition=self.comp, owner=self.user)
+        self.mem = Membership.objects.create(
+            league=self.league, user=self.user, role=consts.Role.OWNER)
+
+    def test_penalty_result_sets_winner_and_scores_draw_pick(self):
+        from predictions import results_sync
+        Prediction.objects.create(
+            membership=self.mem, match=self.match,
+            predicted_home=1, predicted_away=1,
+            predicted_advancer=consts.Advancer.HOME,  # exact draw + right advancer
+        )
+        payload = {"matches": [api_pen_match(
+            "ARG", "FRA", level_home=1, level_away=1, pen_home=4, pen_away=2,
+            winner=consts.FOOTBALL_DATA_WINNER_HOME, utc="2026-07-19T19:00:00Z")]}
+        updated, _unchanged, _unmatched, _msgs = results_sync.apply_results(
+            self.comp, results_sync.normalize(payload))
+        self.assertEqual(updated, 1)
+        self.match.refresh_from_db()
+        self.assertEqual((self.match.home_score, self.match.away_score), (1, 1))
+        self.assertEqual(self.match.penalty_winner, consts.Advancer.HOME)
+        score = MatchScore.objects.get(membership=self.mem, match=self.match)
+        self.assertEqual(score.tier, consts.Tier.EXACT)
+        self.assertEqual(float(score.points), 15.0)  # 10 × 1.5 (final multiplier)
+
+
 FINALIZE_FETCH = "predictions.results_sync.fetch_matches"
 TOKEN_ENV = {consts.FOOTBALL_DATA_TOKEN_ENV: "t"}
 

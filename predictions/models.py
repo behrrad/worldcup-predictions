@@ -122,9 +122,28 @@ class Match(models.Model):
     kickoff = models.DateTimeField(consts.L_KICKOFF)
     home_score = models.PositiveSmallIntegerField(consts.L_HOME_SCORE, null=True, blank=True)
     away_score = models.PositiveSmallIntegerField(consts.L_AWAY_SCORE, null=True, blank=True)
+    # For a knockout match still level at the end of 120', the side that wins the
+    # penalty shootout and advances (HOME/AWAY). Blank for every other match.
+    # home_score/away_score stay the 120' draw — the shootout never inflates them
+    # — so the scoring engine judges predictions against the level result and uses
+    # this only to award the advancer bonus (see scoring._penalty_tier).
+    penalty_winner = models.CharField(
+        consts.L_PENALTY_WINNER, max_length=consts.ADVANCER_MAX_LENGTH,
+        choices=consts.ADVANCER_CHOICES, blank=True, default=consts.Advancer.NONE,
+    )
     status = models.CharField(
         consts.L_STATUS, max_length=12,
         choices=consts.MATCH_STATUS_CHOICES, default=consts.MatchStatus.SCHEDULED,
+    )
+    # When False, this match is omitted from scoring: no MatchScore rows are
+    # written, it never appears on any leaderboard/average, and the live overlay
+    # ignores it — yet predictions and the real result are kept intact. Toggling
+    # it off on a finished match deletes its existing scores (the recompute that
+    # save() triggers drops them); toggling back on rescores normally. Used to
+    # void a match without destroying anyone's predictions.
+    count_for_scoring = models.BooleanField(
+        consts.L_COUNT_FOR_SCORING, default=True,
+        help_text=consts.HELP_COUNT_FOR_SCORING,
     )
     venue = models.CharField(consts.L_VENUE, max_length=120, blank=True)
     # Bracket-slot placeholders for knockout matches whose teams aren't known yet
@@ -176,6 +195,28 @@ class Match(models.Model):
     def is_finished(self) -> bool:
         """A match is scored once both final scores are entered."""
         return self.has_result
+
+    @property
+    def went_to_penalties(self) -> bool:
+        """A finished knockout match left level at 120' and settled on penalties."""
+        return (
+            bool(self.penalty_winner)
+            and self.has_result
+            and self.home_score == self.away_score
+        )
+
+    @property
+    def advancing_side(self) -> str:
+        """Which side advances from this match (HOME/AWAY), or '' if unfinished.
+        A side that wins inside 120' advances on the score; a 120' draw is
+        decided by the penalty shootout (penalty_winner)."""
+        if not self.has_result:
+            return consts.Advancer.NONE
+        if self.home_score > self.away_score:
+            return consts.Advancer.HOME
+        if self.away_score > self.home_score:
+            return consts.Advancer.AWAY
+        return self.penalty_winner
 
     # -- lock helpers ------------------------------------------------------ #
     def lock_time(self, lock_minutes: int):
@@ -392,6 +433,13 @@ class Prediction(models.Model):
     )
     predicted_home = models.PositiveSmallIntegerField(consts.L_PREDICTED_HOME)
     predicted_away = models.PositiveSmallIntegerField(consts.L_PREDICTED_AWAY)
+    # For a knockout *draw* prediction, which side the member thinks will advance
+    # on penalties (HOME/AWAY). Blank for non-draw picks and group matches; only
+    # then can the prediction earn the advancer bonus (see scoring._penalty_tier).
+    predicted_advancer = models.CharField(
+        consts.L_PREDICTED_ADVANCER, max_length=consts.ADVANCER_MAX_LENGTH,
+        choices=consts.ADVANCER_CHOICES, blank=True, default=consts.Advancer.NONE,
+    )
     created_at = models.DateTimeField(consts.L_CREATED_AT, auto_now_add=True)
     updated_at = models.DateTimeField(consts.L_UPDATED_AT, auto_now=True)
 

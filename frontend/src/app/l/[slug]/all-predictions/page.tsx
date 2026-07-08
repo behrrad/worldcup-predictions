@@ -1,11 +1,13 @@
 import { serverFetch } from "@/lib/server";
 import { fa } from "@/lib/format";
+import { advancerTeamName } from "@/lib/match";
 import Avatar from "@/components/Avatar";
 import { LocalDateTime } from "@/components/LocalTime";
 import type {
   AllPredictionsResp,
   AllPredMatch,
   AllPredEntry,
+  TeamT,
 } from "@/lib/types";
 
 // Maps a scoring tier to the chip accent used once a match is finished.
@@ -15,7 +17,17 @@ const TIER_CLASS: Record<string, string> = {
   WINNER: "tier-winner",
 };
 
-function Chip({ p, revealed }: { p: AllPredEntry; revealed: boolean }) {
+function Chip({
+  p,
+  revealed,
+  home,
+  away,
+}: {
+  p: AllPredEntry;
+  revealed: boolean;
+  home: TeamT | null;
+  away: TeamT | null;
+}) {
   const tier = revealed && p.tier ? (TIER_CLASS[p.tier] ?? "") : "";
   return (
     <span className={`pred-chip ${p.is_me ? "me" : ""} ${tier}`}>
@@ -25,7 +37,14 @@ function Chip({ p, revealed }: { p: AllPredEntry; revealed: boolean }) {
         {p.is_me && <span className="muted"> (تو)</span>}
       </span>
       <span className="pick">
-        {revealed ? `${fa(p.home!)} : ${fa(p.away!)}` : "🔒"}
+        {revealed ? (
+          <>
+            {fa(p.home!)} : {fa(p.away!)}
+            {p.advancer && ` ↑${advancerTeamName(p.advancer, home, away)}`}
+          </>
+        ) : (
+          "🔒"
+        )}
       </span>
       {revealed && p.points !== null && (
         <span className="chip-pts">{fa(p.points)}</span>
@@ -67,13 +86,33 @@ function MatchCard({ m, memberCount }: { m: AllPredMatch; memberCount: number })
           <span>{m.away_team?.name ?? m.away_label ?? "؟"}</span>
         </div>
       </div>
+      {m.penalty_winner && (
+        <p className="center muted" style={{ margin: "4px 0 0" }}>
+          🥅 صعود{" "}
+          {advancerTeamName(m.penalty_winner, m.home_team, m.away_team)} با ضربات
+          پنالتی
+        </p>
+      )}
+      {!m.counts_for_scoring && (
+        <p className="center" style={{ margin: "6px 0 0" }}>
+          <span className="no-score-badge">
+            🚫 این بازی در امتیازها حساب نمی‌شود
+          </span>
+        </p>
+      )}
 
       {m.predictions.length === 0 ? (
         <div className="empty">هنوز کسی برای این بازی پیش‌بینی ثبت نکرده.</div>
       ) : (
         <div className="pred-chips">
           {m.predictions.map((p, i) => (
-            <Chip key={i} p={p} revealed={m.revealed} />
+            <Chip
+              key={i}
+              p={p}
+              revealed={m.revealed}
+              home={m.home_team}
+              away={m.away_team}
+            />
           ))}
         </div>
       )}

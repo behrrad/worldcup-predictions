@@ -241,6 +241,30 @@ TIER_CHOICES = [(key, label) for key, label in TIER_LABELS.items()]
 
 
 # --------------------------------------------------------------------------- #
+# Knockout penalty shootouts (who advances when a game is level at 120')
+# --------------------------------------------------------------------------- #
+# A knockout match still level at the end of 120' (regular + extra time) is
+# decided on penalties; the shootout winner advances. Predictions are judged on
+# the 120' score, so a member who predicts a draw in a knockout also picks who
+# they think will go through (Prediction.predicted_advancer), and the real
+# outcome is stored in Match.penalty_winner. Both use these HOME/AWAY values
+# (empty = not a shootout / not predicted).
+class Advancer:
+    NONE = ""        # not decided on penalties, or no advancer picked
+    HOME = "HOME"    # the home side advances / is predicted to advance
+    AWAY = "AWAY"    # the away side advances / is predicted to advance
+
+
+ADVANCER_LABELS = {
+    Advancer.HOME: "تیم میزبان",
+    Advancer.AWAY: "تیم میهمان",
+}
+ADVANCER_CHOICES = [(k, v) for k, v in ADVANCER_LABELS.items()]
+ADVANCER_VALUES = (Advancer.HOME, Advancer.AWAY)
+ADVANCER_MAX_LENGTH = 4   # "HOME" / "AWAY"
+
+
+# --------------------------------------------------------------------------- #
 # Match status
 # --------------------------------------------------------------------------- #
 class MatchStatus:
@@ -454,10 +478,12 @@ L_KICKOFF = "زمان شروع بازی"
 L_HOME_SCORE = "گل میزبان"
 L_AWAY_SCORE = "گل میهمان"
 L_STATUS = "وضعیت"
+L_COUNT_FOR_SCORING = "محاسبه در امتیازها"
 L_MATCH_NUMBER = "شمارهٔ بازی"
 L_VENUE = "ورزشگاه"
 L_HOME_LABEL = "جایگاه میزبان (مرحلهٔ حذفی)"
 L_AWAY_LABEL = "جایگاه میهمان (مرحلهٔ حذفی)"
+L_PENALTY_WINNER = "صعودکننده با پنالتی"
 
 L_LEAGUE = "مسابقهٔ پیش‌بینی"
 L_OWNER = "مدیر"
@@ -514,6 +540,7 @@ L_MEMBERSHIP = "عضویت"
 L_MATCH = "بازی"
 L_PREDICTED_HOME = "پیش‌بینی گل میزبان"
 L_PREDICTED_AWAY = "پیش‌بینی گل میهمان"
+L_PREDICTED_ADVANCER = "پیش‌بینی صعودکننده (پنالتی)"
 L_POINTS = "امتیاز"
 L_TIER = "نوع امتیاز"
 L_COMPUTED_AT = "زمان محاسبه"
@@ -533,6 +560,10 @@ HELP_SLUG = "اگر خالی بماند به‌صورت خودکار ساخته 
 HELP_BONUS_LOCK_AT = (
     "تا این زمان اعضا می‌توانند پیش‌بینی‌های ویژه (قهرمان، آقای گل، قهرمان مسابقه و…) "
     "را ثبت یا ویرایش کنند. اگر خالی باشد، این بخش برای این مسابقه غیرفعال است."
+)
+HELP_COUNT_FOR_SCORING = (
+    "اگر خاموش باشد، این بازی در امتیازها و جدول رده‌بندی محاسبه نمی‌شود؛ "
+    "پیش‌بینی‌ها و نتیجه حفظ می‌شوند ولی امتیازی به همراه ندارند."
 )
 
 
@@ -631,12 +662,39 @@ BRACKET_MATCH_WINNER = "برندهٔ بازی {n}"
 BRACKET_MATCH_LOSER = "بازندهٔ بازی {n}"
 BRACKET_UNKNOWN = "نامشخص"  # empty/undecided slot
 
+# A knockout slot points at the winner or the loser of an earlier match. These
+# are the two "kind"s a "Match N Winner"/"Match N Loser" label resolves to (also
+# the group(2) captured by BRACKET_MATCH_SLOT_RE); the bracket auto-advance reads
+# them to know whether a slot takes the advancing or the eliminated side.
+BRACKET_WINNER = "Winner"
+BRACKET_LOSER = "Loser"
+# Match-referencing slot label, e.g. "Match 73 Winner" -> (73, "Winner").
+BRACKET_MATCH_SLOT_RE = re.compile(r"Match (\d+) (Winner|Loser)")
+
+# The two team sides of a match, as the model's field-name stems (home_team /
+# away_team, home_score / away_score). Used to iterate a match's slots generically.
+SIDE_HOME = "home"
+SIDE_AWAY = "away"
+
 _FA_DIGITS = str.maketrans("0123456789", "۰۱۲۳۴۵۶۷۸۹")
 
 
 def to_fa_digits(value) -> str:
     """Render a number with Persian (Eastern Arabic) digits."""
     return str(value).translate(_FA_DIGITS)
+
+
+def parse_bracket_slot(label: str):
+    """Parse a "Match N Winner"/"Match N Loser" slot label into
+    ``(source_match_number: int, kind)`` where kind is BRACKET_WINNER/LOSER, or
+    None for an empty label or any other placeholder (group slots, real teams).
+    """
+    if not label:
+        return None
+    m = BRACKET_MATCH_SLOT_RE.fullmatch(label.strip())
+    if not m:
+        return None
+    return int(m.group(1)), m.group(2)
 
 
 def bracket_label_fa(label: str) -> str:
@@ -654,10 +712,11 @@ def bracket_label_fa(label: str) -> str:
         return BRACKET_GROUP_RUNNER_UP.format(group=m.group(1))
     if m := re.fullmatch(r"Group ([A-L](?:/[A-L])*) 3rd Place", label):
         return BRACKET_GROUP_THIRD.format(groups=m.group(1))
-    if m := re.fullmatch(r"Match (\d+) Winner", label):
-        return BRACKET_MATCH_WINNER.format(n=to_fa_digits(m.group(1)))
-    if m := re.fullmatch(r"Match (\d+) Loser", label):
-        return BRACKET_MATCH_LOSER.format(n=to_fa_digits(m.group(1)))
+    if m := BRACKET_MATCH_SLOT_RE.fullmatch(label):
+        n = to_fa_digits(m.group(1))
+        template = (BRACKET_MATCH_WINNER if m.group(2) == BRACKET_WINNER
+                    else BRACKET_MATCH_LOSER)
+        return template.format(n=n)
     return label
 
 
@@ -767,6 +826,13 @@ FOOTBALL_DATA_BASE_URL = "https://api.football-data.org/v4"
 FOOTBALL_DATA_WC_CODE = "WC"             # football-data's FIFA World Cup code
 FOOTBALL_DATA_TIMEOUT = 15               # seconds
 FOOTBALL_DATA_FINISHED = "FINISHED"      # the API match status we act on
+# score.duration values + the shootout winner enum. A PENALTY_SHOOTOUT match's
+# score.fullTime *includes* the shootout goals (regularTime 1-1 + penalties 6-5
+# → fullTime 7-6), so the 120' draw we score against is fullTime − penalties and
+# the side that advances comes from score.winner.
+FOOTBALL_DATA_PENALTY = "PENALTY_SHOOTOUT"
+FOOTBALL_DATA_WINNER_HOME = "HOME_TEAM"
+FOOTBALL_DATA_WINNER_AWAY = "AWAY_TEAM"
 FOOTBALL_DATA_USER_AGENT = "worldcup-predictions/1.0"  # default urllib UA is blocked
 FOOTBALL_DATA_TOKEN_HEADER = "X-Auth-Token"
 FOOTBALL_DATA_TOKEN_ENV = "FOOTBALL_DATA_API_TOKEN"

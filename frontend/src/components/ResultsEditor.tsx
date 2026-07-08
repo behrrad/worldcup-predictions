@@ -5,10 +5,11 @@ import { useAuth } from "@clerk/nextjs";
 
 import { apiFetch } from "@/lib/api";
 import { fmtDate, fmtTime, fa } from "@/lib/format";
+import { isKnockout, isDrawScore } from "@/lib/match";
 import { useTimeZone } from "@/components/LocalTime";
 import type { AdminMatchT } from "@/lib/types";
 
-type Vals = Record<number, { home: string; away: string }>;
+type Vals = Record<number, { home: string; away: string; penalty_winner: string }>;
 type SaveState = "idle" | "saving" | "saved" | "error";
 type Filter = "pending" | "all";
 
@@ -21,6 +22,7 @@ function valsFor(m: AdminMatchT) {
   return {
     home: m.home_score != null ? String(m.home_score) : "",
     away: m.away_score != null ? String(m.away_score) : "",
+    penalty_winner: m.penalty_winner ?? "",
   };
 }
 
@@ -45,7 +47,17 @@ export default function ResultsEditor({
     setSaveState((s) => ({ ...s, [id]: "idle" }));
   }
 
-  async function post(id: number, body: Record<string, number | null>) {
+  function setPenaltyWinner(id: number, side: string) {
+    setVals((s) => ({ ...s, [id]: { ...s[id], penalty_winner: side } }));
+    setSaveState((s) => ({ ...s, [id]: "idle" }));
+  }
+
+  // A knockout level at 120' needs the side that advanced before it can be saved.
+  function needsPenaltyWinner(m: AdminMatchT, v: Vals[number]) {
+    return isKnockout(m.stage) && isDrawScore(v.home, v.away);
+  }
+
+  async function post(id: number, body: Record<string, number | string | null>) {
     setSaveState((s) => ({ ...s, [id]: "saving" }));
     try {
       const token = await getToken();
@@ -64,7 +76,13 @@ export default function ResultsEditor({
   function save(m: AdminMatchT) {
     const v = vals[m.id];
     if (!v || v.home === "" || v.away === "") return;
-    post(m.id, { home_score: Number(v.home), away_score: Number(v.away) });
+    if (needsPenaltyWinner(m, v) && v.penalty_winner === "") return;
+    post(m.id, {
+      home_score: Number(v.home),
+      away_score: Number(v.away),
+      // Only a knockout draw carries a shootout winner; cleared otherwise.
+      penalty_winner: needsPenaltyWinner(m, v) ? v.penalty_winner : "",
+    });
   }
 
   function clearResult(m: AdminMatchT) {
@@ -172,6 +190,30 @@ export default function ResultsEditor({
                     </div>
                   </div>
 
+                  {ready && needsPenaltyWinner(m, v) && (
+                    <div className="advancer-pick">
+                      <span className="advancer-q">
+                        مساوی در ۱۲۰ دقیقه — صعودکننده با پنالتی:
+                      </span>
+                      <div className="advancer-opts">
+                        <button
+                          type="button"
+                          className={`btn btn-sm ${v.penalty_winner === "HOME" ? "btn-pitch" : ""}`}
+                          onClick={() => setPenaltyWinner(m.id, "HOME")}
+                        >
+                          {m.home_team?.flag} {m.home_team?.name}
+                        </button>
+                        <button
+                          type="button"
+                          className={`btn btn-sm ${v.penalty_winner === "AWAY" ? "btn-pitch" : ""}`}
+                          onClick={() => setPenaltyWinner(m.id, "AWAY")}
+                        >
+                          {m.away_team?.flag} {m.away_team?.name}
+                        </button>
+                      </div>
+                    </div>
+                  )}
+
                   {ready && (
                     <div className="pred-actions">
                       <span className="pred-action-right">
@@ -193,7 +235,10 @@ export default function ResultsEditor({
                           type="button"
                           className="btn btn-pitch btn-sm"
                           disabled={
-                            state === "saving" || v.home === "" || v.away === ""
+                            state === "saving" ||
+                            v.home === "" ||
+                            v.away === "" ||
+                            (needsPenaltyWinner(m, v) && v.penalty_winner === "")
                           }
                           onClick={() => save(m)}
                         >
