@@ -305,6 +305,12 @@ TELEGRAM_BOT_TOKEN = os.environ.get(consts.TELEGRAM_BOT_TOKEN_ENV, "")
 TELEGRAM_BOT_USERNAME = os.environ.get(consts.TELEGRAM_BOT_USERNAME_ENV, "").lstrip("@")
 TASK_TRIGGER_KEY = os.environ.get(consts.TASK_TRIGGER_KEY_ENV, "")
 
+# Email (Resend). Announcement email goes out via predictions/email.py, which
+# posts to Resend's API with RESEND_API_KEY. Until that key is set the sender is
+# a no-op, so the feature ships dark and nothing is emailed by accident.
+RESEND_API_KEY = os.environ.get(consts.RESEND_API_KEY_ENV, "")
+DEFAULT_FROM_EMAIL = os.environ.get(consts.DEFAULT_FROM_EMAIL_ENV, consts.EMAIL_FROM_FALLBACK)
+
 
 # --------------------------------------------------------------------------- #
 # Internationalization — Persian / RTL

@@ -449,6 +449,31 @@ def run_notifications(now=None) -> dict:
 
 
 # --------------------------------------------------------------------------- #
+# One-off broadcast — an announcement to every reachable member
+# --------------------------------------------------------------------------- #
+def broadcast_announcement(text: str, dedup_key: str) -> int:
+    """Send `text` once to every linked member opted into reminders.
+
+    Idempotent per (user, ANNOUNCE, dedup_key) via the same NotificationLog guard
+    as the reminders, so re-running the broadcast only reaches members who haven't
+    received this campaign yet. A no-op when the bot isn't configured. Returns the
+    number of members newly messaged."""
+    if not is_configured():
+        return 0
+    sent = 0
+    for user in _linked_users("telegram_notify"):
+        if _send_once(user, consts.NotifyKind.ANNOUNCE, dedup_key, text):
+            sent += 1
+    return sent
+
+
+def announcement_2x_message() -> str:
+    """The 2× knockout-boost Telegram message, with the site link filled in."""
+    url = f"{settings.FRONTEND_URL}{consts.TELEGRAM_REMINDER_PATH}"
+    return consts.TG_ANNOUNCE_2X.format(url=url)
+
+
+# --------------------------------------------------------------------------- #
 # Live match events — kickoff / goals / half-time / full-time
 # --------------------------------------------------------------------------- #
 # A second, opt-in DM stream (User.telegram_notify_matches) that narrates a match

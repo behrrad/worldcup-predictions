@@ -77,6 +77,39 @@ DEFAULT_STAGE_MULTIPLIERS = {
     for stage in STAGE_ORDER
 }
 
+# --------------------------------------------------------------------------- #
+# Mid-tournament knockout multiplier boost (owner opt-in)
+# --------------------------------------------------------------------------- #
+# From the quarter-finals onward a league owner may opt in to raise the knockout
+# multiplier to this value (from the DEFAULT_KNOCKOUT_MULTIPLIER of 1.5). The
+# decision is recorded once per league so the prompt is shown a single time; it
+# only affects not-yet-scored matches, so it's non-retroactive at QF stage.
+BOOST_TARGET_MULTIPLIER = Decimal("2.0")
+
+# Stages the boost applies to (quarter-finals and everything after).
+BOOST_STAGES = [Stage.QUARTER, Stage.SEMI, Stage.THIRD_PLACE, Stage.FINAL]
+
+
+class BoostDecision:
+    PENDING = "PENDING"     # owner hasn't answered the prompt yet
+    ACCEPTED = "ACCEPTED"   # owner opted in — multipliers raised to 2×
+    DECLINED = "DECLINED"   # owner declined — multipliers stay at 1.5×
+
+
+BOOST_DECISION_LABELS = {
+    BoostDecision.PENDING: "در انتظار تصمیم",
+    BoostDecision.ACCEPTED: "پذیرفته‌شده",
+    BoostDecision.DECLINED: "ردشده",
+}
+BOOST_DECISION_CHOICES = [(k, v) for k, v in BOOST_DECISION_LABELS.items()]
+BOOST_DECISION_MAX_LENGTH = 8
+
+# The two values the PATCH endpoint accepts for the `boost_decision` action.
+BOOST_ACTION_ACCEPT = "accept"
+BOOST_ACTION_DECLINE = "decline"
+
+L_BOOST_DECISION = "تصمیم دربارهٔ ضریب ۲برابری مراحل حذفی"
+
 # How many minutes before kickoff predictions lock. 0 = open until kickoff.
 DEFAULT_LOCK_MINUTES = 0
 
@@ -468,6 +501,7 @@ MSG_INVALID_RESULT = "نتیجهٔ واردشده نامعتبر است."
 # Changing a league's settings is restricted to its owner (the league "admin").
 MSG_OWNER_ONLY = "فقط مدیر مسابقه می‌تواند تنظیمات آن را تغییر دهد."
 MSG_EXPORT_INVALID_KEY = "کلید خروجی نامعتبر است."
+MSG_BOOST_ACTION_INVALID = "مقدار تصمیم ضریب نامعتبر است."
 
 
 # --------------------------------------------------------------------------- #
@@ -733,6 +767,20 @@ TELEGRAM_BOT_TOKEN_ENV = "TELEGRAM_BOT_TOKEN"
 TELEGRAM_BOT_USERNAME_ENV = "TELEGRAM_BOT_USERNAME"
 TASK_TRIGGER_KEY_ENV = "TASK_TRIGGER_KEY"
 
+# -- Email (Resend) --------------------------------------------------------- #
+# Announcement/transactional email via Resend's HTTP API. Env-gated: with no
+# RESEND_API_KEY the sender is a no-op (the feature ships dark), so nothing is
+# emailed until the key + a verified from-address are configured.
+RESEND_API_KEY_ENV = "RESEND_API_KEY"
+DEFAULT_FROM_EMAIL_ENV = "DEFAULT_FROM_EMAIL"
+RESEND_API_URL = "https://api.resend.com/emails"
+EMAIL_USER_AGENT = "worldcup-predictions/1.0"  # default urllib UA is blocked
+EMAIL_FETCH_TIMEOUT = 10               # seconds, per API call
+EMAIL_FROM_FALLBACK = "World Cup <onboarding@resend.dev>"
+# Placeholder addresses minted for users without a real Clerk email; never mail
+# these (see accounts/clerk.py). Match on the domain suffix.
+EMAIL_PLACEHOLDER_SUFFIX = "@users.noreply.clerk"
+
 # Telegram Bot API.
 TELEGRAM_API_BASE = "https://api.telegram.org/bot{token}"
 TELEGRAM_METHOD_SEND_MESSAGE = "sendMessage"
@@ -775,6 +823,7 @@ class NotifyKind:
     HALFTIME = "HALFTIME"   # dedup key: the match id
     SECOND_HALF = "SECONDHALF"  # dedup key: the match id
     FULLTIME = "FULLTIME"   # dedup key: the match id
+    ANNOUNCE = "ANNOUNCE"   # dedup key: the announcement's campaign key
 
 
 NOTIFY_KIND_LABELS = {
@@ -785,6 +834,7 @@ NOTIFY_KIND_LABELS = {
     NotifyKind.HALFTIME: "پایان نیمهٔ اول",
     NotifyKind.SECOND_HALF: "شروع نیمهٔ دوم",
     NotifyKind.FULLTIME: "پایان بازی",
+    NotifyKind.ANNOUNCE: "اطلاعیه",
 }
 NOTIFY_KIND_CHOICES = [(k, v) for k, v in NOTIFY_KIND_LABELS.items()]
 
@@ -840,6 +890,31 @@ TG_REMINDER_FOOTER = "همین حالا ثبت کن 👇\n<a href=\"{url}\">{url
 
 # Frontend path the reminder links to (cross-league, so the dashboard).
 TELEGRAM_REMINDER_PATH = "/dashboard"
+
+# -- 2× knockout-boost announcement ----------------------------------------- #
+# Idempotency keys (NotificationLog dedup_key): one Telegram DM and one email per
+# member for this campaign. The two channels use distinct keys so both can fire
+# to the same member without colliding on the (user, kind, dedup_key) guard.
+ANNOUNCE_2X_CAMPAIGN = "2026-qf-2x"
+ANNOUNCE_2X_EMAIL_CAMPAIGN = "2026-qf-2x-email"
+# Telegram broadcast (parse_mode=HTML). {url} is the site link.
+TG_ANNOUNCE_2X = (
+    "📣 <b>خبر مهم درباره‌ی امتیازها!</b>\n\n"
+    "از مرحلهٔ یک‌چهارم نهایی به بعد، امتیاز بازی‌های حذفی <b>۲ برابر</b> می‌شود "
+    "(به‌جای ۱٫۵ برابر). یعنی پیش‌بینی درست بازی‌های بزرگِ پیش‌رو ارزش بیشتری دارد.\n\n"
+    "اگر مدیر یک مسابقه هستی، در صفحهٔ مسابقه‌ات این تغییر را تأیید کن تا برای اعضا فعال شود.\n"
+    "<a href=\"{url}\">{url}</a>"
+)
+# Email broadcast (plain text; {name} is the member's display name).
+EMAIL_ANNOUNCE_2X_SUBJECT = "ضریب امتیاز مراحل حذفی ۲ برابر شد ⚽️"
+EMAIL_ANNOUNCE_2X_BODY = (
+    "سلام {name}،\n\n"
+    "از مرحلهٔ یک‌چهارم نهایی به بعد، امتیاز بازی‌های حذفی ۲ برابر می‌شود "
+    "(به‌جای ۱٫۵ برابر). پیش‌بینی درستِ بازی‌های بزرگِ پیش‌رو حالا ارزش بیشتری دارد.\n\n"
+    "اگر مدیر یک مسابقه هستی، در صفحهٔ مسابقه‌ات این تغییر را تأیید کن تا برای اعضا فعال شود:\n"
+    "{url}\n\n"
+    "موفق باشی!"
+)
 
 # -- Live match-event messages (telegram.run_match_events) ------------------- #
 # Each DM is a title line, a fixture/score line, then a personalized line built

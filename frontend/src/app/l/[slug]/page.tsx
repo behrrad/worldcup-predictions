@@ -4,6 +4,7 @@ import { serverFetch } from "@/lib/server";
 import { fa } from "@/lib/format";
 import { LocalDateTime } from "@/components/LocalTime";
 import RevealToggle from "@/components/RevealToggle";
+import BoostPrompt from "@/components/BoostPrompt";
 import type { LeagueDetail, LeaderboardResp, MatchT } from "@/lib/types";
 
 export default async function Overview({
@@ -40,6 +41,12 @@ export default async function Overview({
           <h2 className="card-title">🔗 دعوت دوستان</h2>
           <p className="muted">این کد را برای دوستانت بفرست تا به مسابقه بپیوندند:</p>
           <span className="invite-code">{league.invite_code}</span>
+        </div>
+      )}
+
+      {league.is_owner && (
+        <div className="mt">
+          <BoostPrompt slug={slug} initial={league.boost_decision} />
         </div>
       )}
 

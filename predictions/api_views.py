@@ -169,6 +169,9 @@ def _league_dict(league, membership, request):
         # Whether other members' predictions are shown after a match locks
         # (owner-toggleable). The frontend renders the toggle for the owner.
         "reveal_predictions": league.reveal_predictions,
+        # Owner's one-time decision on the 2× knockout boost (PENDING/ACCEPTED/
+        # DECLINED). The frontend shows the opt-in prompt while it's PENDING.
+        "boost_decision": league.boost_decision,
         # The export key/link is shared with the whole league — anyone can use it
         # to download the results spreadsheet (upcoming picks stay hidden inside it).
         "export_key": league.export_key,
@@ -523,6 +526,17 @@ def league_detail(request, slug):
         if "reveal_predictions" in request.data:
             league.reveal_predictions = _as_bool(request.data.get("reveal_predictions"))
             league.save(update_fields=["reveal_predictions"])
+        if "boost_decision" in request.data:
+            action = request.data.get("boost_decision")
+            if action == consts.BOOST_ACTION_ACCEPT:
+                league.apply_boost()
+                # QF+ isn't scored yet, so this only affects future matches; the
+                # recompute keeps already-finished stages consistent regardless.
+                scoring.recompute_league_scores(league)
+            elif action == consts.BOOST_ACTION_DECLINE:
+                league.decline_boost()
+            else:
+                raise ValidationError(consts.MSG_BOOST_ACTION_INVALID)
     return Response(_league_dict(league, membership, request))
 
 

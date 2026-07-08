@@ -301,6 +301,13 @@ class League(models.Model):
         consts.L_MULT_FINAL, max_digits=4, decimal_places=2,
         default=consts.DEFAULT_KNOCKOUT_MULTIPLIER)
 
+    # One-time owner decision on the mid-tournament 2× knockout boost. PENDING
+    # until the owner answers the prompt on the league page; ACCEPTED raises the
+    # QF-onward multipliers to consts.BOOST_TARGET_MULTIPLIER.
+    boost_decision = models.CharField(
+        consts.L_BOOST_DECISION, max_length=consts.BOOST_DECISION_MAX_LENGTH,
+        choices=consts.BOOST_DECISION_CHOICES, default=consts.BoostDecision.PENDING)
+
     is_active = models.BooleanField(consts.L_IS_ACTIVE, default=True)
     created_at = models.DateTimeField(consts.L_CREATED_AT, auto_now_add=True)
 
@@ -350,6 +357,32 @@ class League(models.Model):
 
     def multiplier_for(self, stage: str):
         return self._stage_multiplier_map.get(stage, consts.DEFAULT_GROUP_MULTIPLIER)
+
+    # Map each boostable stage to the League field that stores its multiplier.
+    _BOOST_FIELDS = {
+        consts.Stage.QUARTER: "multiplier_qf",
+        consts.Stage.SEMI: "multiplier_sf",
+        consts.Stage.THIRD_PLACE: "multiplier_tp",
+        consts.Stage.FINAL: "multiplier_final",
+    }
+
+    def apply_boost(self):
+        """Opt this league into the 2× knockout boost: raise the QF-onward
+        multipliers to consts.BOOST_TARGET_MULTIPLIER and record the decision.
+        Persists via save(update_fields=...). Returns the changed field names."""
+        fields = ["boost_decision"]
+        self.boost_decision = consts.BoostDecision.ACCEPTED
+        for stage in consts.BOOST_STAGES:
+            field = self._BOOST_FIELDS[stage]
+            setattr(self, field, consts.BOOST_TARGET_MULTIPLIER)
+            fields.append(field)
+        self.save(update_fields=fields)
+        return fields
+
+    def decline_boost(self):
+        """Record that the owner declined the 2× boost (multipliers stay as-is)."""
+        self.boost_decision = consts.BoostDecision.DECLINED
+        self.save(update_fields=["boost_decision"])
 
 
 class Membership(models.Model):

@@ -463,6 +463,56 @@ class RevealPredictionsToggleTests(AuthedTestCase):
         self.assertTrue(self.league.reveal_predictions)  # unchanged
 
 
+class BoostOptInTests(AuthedTestCase):
+    """The owner-gated 2× knockout-boost opt-in on league_detail PATCH."""
+
+    def setUp(self):
+        super().setUp()
+        self.league = make_league(self.comp, owner=self.user)
+        self.other = join(self.league)
+
+    def _url(self):
+        return reverse("api_league_detail", args=[self.league.slug])
+
+    def test_default_is_pending(self):
+        body = self.client.get(self._url()).json()
+        self.assertEqual(body["boost_decision"], consts.BoostDecision.PENDING)
+
+    def test_owner_accept_doubles_qf_onward(self):
+        res = self.client.patch(self._url(), {"boost_decision": "accept"}, format="json")
+        self.assertEqual(res.status_code, 200)
+        self.assertEqual(res.json()["boost_decision"], consts.BoostDecision.ACCEPTED)
+        self.league.refresh_from_db()
+        self.assertEqual(self.league.multiplier_qf, consts.BOOST_TARGET_MULTIPLIER)
+        self.assertEqual(self.league.multiplier_sf, consts.BOOST_TARGET_MULTIPLIER)
+        self.assertEqual(self.league.multiplier_tp, consts.BOOST_TARGET_MULTIPLIER)
+        self.assertEqual(self.league.multiplier_final, consts.BOOST_TARGET_MULTIPLIER)
+        # Earlier rounds are untouched.
+        self.assertEqual(self.league.multiplier_r16, consts.DEFAULT_KNOCKOUT_MULTIPLIER)
+
+    def test_owner_decline_keeps_multipliers(self):
+        res = self.client.patch(self._url(), {"boost_decision": "decline"}, format="json")
+        self.assertEqual(res.status_code, 200)
+        self.assertEqual(res.json()["boost_decision"], consts.BoostDecision.DECLINED)
+        self.league.refresh_from_db()
+        self.assertEqual(self.league.multiplier_qf, consts.DEFAULT_KNOCKOUT_MULTIPLIER)
+
+    def test_invalid_value_is_rejected(self):
+        res = self.client.patch(self._url(), {"boost_decision": "maybe"}, format="json")
+        self.assertEqual(res.status_code, 400)
+        self.league.refresh_from_db()
+        self.assertEqual(self.league.boost_decision, consts.BoostDecision.PENDING)
+
+    def test_non_owner_cannot_decide(self):
+        member_client = APIClient()
+        member_client.force_authenticate(user=self.other.user)
+        res = member_client.patch(self._url(), {"boost_decision": "accept"}, format="json")
+        self.assertEqual(res.status_code, 403)
+        self.league.refresh_from_db()
+        self.assertEqual(self.league.boost_decision, consts.BoostDecision.PENDING)
+        self.assertEqual(self.league.multiplier_qf, consts.DEFAULT_KNOCKOUT_MULTIPLIER)
+
+
 class ThrottleTests(AuthedTestCase):
     def setUp(self):
         super().setUp()

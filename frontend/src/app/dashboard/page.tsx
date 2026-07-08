@@ -5,6 +5,7 @@ import { serverFetch } from "@/lib/server";
 import { fa } from "@/lib/format";
 import JoinLeague from "@/components/JoinLeague";
 import LiveScores from "@/components/LiveScores";
+import SiteNotice from "@/components/SiteNotice";
 import TelegramConnect from "@/components/TelegramConnect";
 import type { LeagueCard, CompetitionT, MeT } from "@/lib/types";
 
@@ -25,6 +26,8 @@ export default async function Dashboard() {
         <h1>سلام {name} 👋</h1>
         <p>مسابقه‌های پیش‌بینی تو</p>
       </div>
+
+      <SiteNotice />
 
       <LiveScores />
 
