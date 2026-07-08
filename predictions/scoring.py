@@ -199,7 +199,12 @@ def recompute_league_scores(league) -> int:
 def leaderboard(league):
     """
     Return a list of dicts ranked by total points, ready for the template:
-        [{"rank", "membership", "name", "total", "played", "exact_count"}, ...]
+        [{"rank", "membership", "name", "total", "match_total", "bonus_total",
+          "played", "exact_count"}, ...]
+
+    `total` = `match_total` (per-match predictions) + `bonus_total` (settled
+    tournament-wide bonus picks). `bonus_total` is 0 until settlement, so a
+    league without bonus scores behaves exactly as before.
     """
     from django.db.models import Count, Q, Sum
     from django.db.models.functions import Coalesce
@@ -212,21 +217,31 @@ def leaderboard(league):
         Membership.objects.filter(league=league)
         .select_related("user")
         .annotate(
-            total=Coalesce(Sum("scores__points"), Decimal("0.00")),
+            match_total=Coalesce(Sum("scores__points"), Decimal("0.00")),
             # Only games the member actually predicted. A finished match writes a
             # MatchScore row for *every* member (tier=NONE for non-predictors),
             # so counting all rows would report total finished matches instead.
             played=Count("scores", filter=~Q(scores__tier=consts.Tier.NONE)),
             exact_count=Count("scores", filter=Q(scores__tier=consts.Tier.EXACT)),
         )
-        .order_by("-total", "joined_at")
     )
+    # Bonus points are summed separately and added in Python: annotating a second
+    # Sum over a different reverse relation in the same query would multiply the
+    # rows (a cartesian join) and corrupt both sums.
+    bonus_totals = _bonus_totals(league)
+
+    enriched = []
+    for m in rows:
+        match_total = m.match_total or _ZERO
+        bonus_total = bonus_totals.get(m.id, _ZERO)
+        enriched.append((m, match_total, bonus_total, match_total + bonus_total))
+    # Same ordering as before: most points first, ties broken by seniority.
+    enriched.sort(key=lambda x: (-x[3], x[0].joined_at))
 
     table = []
     rank = 0
     prev_total = object()
-    for i, m in enumerate(rows, start=1):
-        total = m.total or Decimal("0.00")
+    for i, (m, match_total, bonus_total, total) in enumerate(enriched, start=1):
         # Standard competition ranking (ties share a rank).
         if total != prev_total:
             rank = i
@@ -236,6 +251,8 @@ def leaderboard(league):
             "membership": m,
             "name": m.user.public_name,
             "total": total,
+            "match_total": match_total,
+            "bonus_total": bonus_total,
             "played": m.played or 0,
             "exact_count": m.exact_count or 0,
         })
@@ -265,8 +282,10 @@ def _annotate_averages(league, table):
     ).exclude(count_for_scoring=False).count()
     for row in table:
         played = row["played"]
+        # Average is points *per predicted game*, so it's built from match points
+        # only — the one-off bonus picks aren't per-game and would distort it.
         row["avg_points"] = (
-            (row["total"] / played).quantize(_AVG, rounding=ROUND_HALF_UP)
+            (row["match_total"] / played).quantize(_AVG, rounding=ROUND_HALF_UP)
             if played else Decimal("0.0000")
         )
         row["eligible_for_avg"] = (
@@ -287,6 +306,124 @@ def _annotate_averages(league, table):
             rank = i
             prev_avg = row["avg_points"]
         row["avg_rank"] = rank
+
+
+# --------------------------------------------------------------------------- #
+# Tournament-wide bonus predictions — settle picks into BonusScore rows
+# --------------------------------------------------------------------------- #
+def _bonus_totals(league, exclude_league_winner=False):
+    """membership_id -> Decimal sum of a league's bonus points."""
+    from django.db.models import Sum
+    from .models import BonusScore
+
+    qs = BonusScore.objects.filter(membership__league=league)
+    if exclude_league_winner:
+        qs = qs.exclude(kind=consts.BonusKind.LEAGUE_WINNER)
+    totals = {}
+    for row in qs.values("membership_id").annotate(t=Sum("points")):
+        totals[row["membership_id"]] = row["t"] or _ZERO
+    return totals
+
+
+def _match_totals(league):
+    """membership_id -> Decimal sum of a league's match points."""
+    from django.db.models import Sum
+    from django.db.models.functions import Coalesce
+    from .models import Membership
+
+    rows = (
+        Membership.objects.filter(league=league)
+        .annotate(t=Coalesce(Sum("scores__points"), _ZERO))
+    )
+    return {m.id: (m.t or _ZERO) for m in rows}
+
+
+def _frozen_league_champion_id(league):
+    """The membership id at the top of the *frozen* standings — match points
+    plus every outcome-based bonus (everything except the league-winner pick).
+
+    This is the target the "who wins our league" meta-pick is scored against;
+    excluding that pick from its own target is what keeps the single settlement
+    pass non-circular. Ties break by seniority, exactly like leaderboard().
+    Returns None for an empty league."""
+    from .models import Membership
+
+    memberships = list(Membership.objects.filter(league=league))
+    if not memberships:
+        return None
+    match_totals = _match_totals(league)
+    bonus_totals = _bonus_totals(league, exclude_league_winner=True)
+
+    def frozen_total(m):
+        return match_totals.get(m.id, _ZERO) + bonus_totals.get(m.id, _ZERO)
+
+    ordered = sorted(memberships, key=lambda m: (-frozen_total(m), m.joined_at))
+    return ordered[0].id
+
+
+def _upsert_bonus_score(membership, kind, points, correct):
+    from .models import BonusScore
+    BonusScore.objects.update_or_create(
+        membership=membership, kind=kind,
+        defaults={"points": points, "correct": correct},
+    )
+
+
+def settle_bonus_scores(competition) -> int:
+    """Compute every league member's bonus points for `competition` and write
+    BonusScore rows. Idempotent (safe to re-run). One pass, in a fixed order:
+
+      1. outcome-based questions (champion, 2nd/3rd/4th, Golden Boot/Ball) —
+         scored against the recorded TournamentOutcome;
+      2. the "who wins our league" meta-pick — scored against the frozen
+         standings from step 1 (match points + those outright bonuses), added
+         last so it never counts toward the target it predicts.
+
+    A pick earns the league's configured points for that question when it exactly
+    matches the answer, else zero. A missing outcome answer just scores everyone
+    zero for that question."""
+    from .models import BonusPrediction, League, Membership, TournamentOutcome
+
+    outcome = TournamentOutcome.objects.filter(competition=competition).first()
+    written = 0
+    for league in League.objects.filter(competition=competition):
+        memberships = list(Membership.objects.filter(league=league))
+        preds = {
+            (p.membership_id, p.kind): p
+            for p in BonusPrediction.objects.filter(membership__league=league)
+            .select_related("team", "player", "target_membership")
+        }
+
+        # 1. Outcome-based questions.
+        for kind in consts.BONUS_OUTCOME_KINDS:
+            answer = outcome.answer_for(kind) if outcome else None
+            points_value = Decimal(league.bonus_points_for(kind))
+            for m in memberships:
+                pick = preds.get((m.id, kind))
+                chosen = pick.pick_object() if pick else None
+                correct = (
+                    answer is not None and chosen is not None and chosen.id == answer.id
+                )
+                _upsert_bonus_score(m, kind, points_value if correct else _ZERO, correct)
+                written += 1
+
+        # 2. League-winner meta-pick, against the now-persisted frozen standings.
+        champion_id = _frozen_league_champion_id(league)
+        points_value = Decimal(league.bonus_points_for(consts.BonusKind.LEAGUE_WINNER))
+        for m in memberships:
+            pick = preds.get((m.id, consts.BonusKind.LEAGUE_WINNER))
+            chosen_id = pick.target_membership_id if pick else None
+            correct = (
+                champion_id is not None
+                and chosen_id is not None
+                and chosen_id == champion_id
+            )
+            _upsert_bonus_score(
+                m, consts.BonusKind.LEAGUE_WINNER,
+                points_value if correct else _ZERO, correct,
+            )
+            written += 1
+    return written
 
 
 # --------------------------------------------------------------------------- #

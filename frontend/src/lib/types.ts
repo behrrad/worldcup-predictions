@@ -128,6 +128,16 @@ export interface LeagueDetail {
     points_participation: number;
     lock_minutes: number;
     stage_multipliers: StageMult[];
+    // Tournament-wide bonus questions (enabled per league via bonus_lock_at).
+    bonus_enabled: boolean;
+    bonus_lock_at: string | null;
+    points_champion: number;
+    points_runner_up: number;
+    points_third: number;
+    points_fourth: number;
+    points_golden_boot: number;
+    points_golden_ball: number;
+    points_league_winner: number;
   };
 }
 
@@ -151,6 +161,10 @@ export interface LeaderRow {
   rank: number;
   name: string;
   total: number;
+  // Split of the total: per-match points vs. settled tournament-bonus points
+  // (bonus_total is 0 until the bonus is settled at tournament end).
+  match_total: number;
+  bonus_total: number;
   played: number;
   exact_count: number;
   is_me: boolean;
@@ -513,4 +527,50 @@ export interface MemberRow {
   played: number;
   exact_count: number;
   is_me: boolean;
+}
+
+// ----- Tournament-wide bonus predictions -----------------------------------
+// A shortlisted player (Golden Boot / Ball option).
+export interface PlayerCandidateT {
+  id: number;
+  name: string;
+  team: TeamT | null;
+}
+
+// A league member as an option for the "who wins our league" pick (the id is
+// the membership id, which is what a pick's `value` references).
+export interface BonusMemberT {
+  id: number;
+  name: string;
+  is_me: boolean;
+}
+
+export interface BonusQuestionT {
+  kind: string;
+  label: string;
+  description: string;
+  // How the question is answered — decides which option list to show.
+  answer_type: "team" | "player" | "member";
+  points: number;
+  // The current pick's option id (team / player / membership), or null.
+  my_pick: number | null;
+  // Once settled: the correct option id, whether my pick was right, and the
+  // points I earned. All null before settlement.
+  correct: number | null;
+  my_correct: boolean | null;
+  my_points: number | null;
+}
+
+export interface BonusResp {
+  // The feature is on for this league (a lock deadline is set).
+  enabled: boolean;
+  // Picks can still be edited (enabled and before the deadline).
+  is_open: boolean;
+  lock_at: string | null;
+  // Results have been computed (correct answers + points are populated).
+  settled: boolean;
+  teams: TeamT[];
+  players: PlayerCandidateT[];
+  members: BonusMemberT[];
+  questions: BonusQuestionT[];
 }
