@@ -4,6 +4,7 @@ import { serverFetch } from "@/lib/server";
 import { fa } from "@/lib/format";
 import { LocalDateTime } from "@/components/LocalTime";
 import RevealToggle from "@/components/RevealToggle";
+import BonusSettings from "@/components/BonusSettings";
 import type { LeagueDetail, LeaderboardResp, MatchT } from "@/lib/types";
 
 export default async function Overview({
@@ -46,6 +47,12 @@ export default async function Overview({
       {league.is_owner && (
         <div className="mt">
           <RevealToggle slug={slug} initial={league.reveal_predictions} />
+        </div>
+      )}
+
+      {league.is_owner && (
+        <div className="mt">
+          <BonusSettings slug={slug} initial={league.scoring.bonus_lock_at} />
         </div>
       )}
 

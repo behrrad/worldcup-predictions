@@ -945,3 +945,35 @@ class BonusApiTests(AuthedTestCase):
         other_league = make_league(self.comp, bonus_lock_at=timezone.now() + timedelta(days=1))
         res = self.client.get(self._url(other_league))
         self.assertEqual(res.status_code, 404)
+
+
+class BonusSettingsPatchTests(AuthedTestCase):
+    def test_owner_sets_and_clears_bonus_deadline(self):
+        league = make_league(self.comp, owner=self.user)
+        url = reverse("api_league_detail", args=[league.slug])
+        iso = (timezone.now() + timedelta(days=1)).isoformat()
+        res = self.client.patch(url, {"bonus_lock_at": iso}, format="json")
+        self.assertEqual(res.status_code, 200)
+        self.assertTrue(res.json()["scoring"]["bonus_enabled"])
+        self.assertIsNotNone(res.json()["scoring"]["bonus_lock_at"])
+        league.refresh_from_db()
+        self.assertIsNotNone(league.bonus_lock_at)
+        # Clearing turns the feature back off.
+        res = self.client.patch(url, {"bonus_lock_at": None}, format="json")
+        self.assertFalse(res.json()["scoring"]["bonus_enabled"])
+        self.assertIsNone(res.json()["scoring"]["bonus_lock_at"])
+
+    def test_member_cannot_set_bonus_deadline(self):
+        league = make_league(self.comp)  # owned by someone else
+        join(league, user=self.user)
+        res = self.client.patch(
+            reverse("api_league_detail", args=[league.slug]),
+            {"bonus_lock_at": timezone.now().isoformat()}, format="json")
+        self.assertEqual(res.status_code, 403)
+
+    def test_bad_datetime_rejected(self):
+        league = make_league(self.comp, owner=self.user)
+        res = self.client.patch(
+            reverse("api_league_detail", args=[league.slug]),
+            {"bonus_lock_at": "not-a-date"}, format="json")
+        self.assertEqual(res.status_code, 400)

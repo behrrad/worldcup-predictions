@@ -8,6 +8,7 @@ from django.db.models import Count
 from django.http import HttpResponse
 from django.shortcuts import get_object_or_404
 from django.utils import timezone
+from django.utils.dateparse import parse_datetime
 from PIL import Image, UnidentifiedImageError
 from rest_framework.decorators import (
     api_view,
@@ -525,6 +526,20 @@ def league_detail(request, slug):
         if "reveal_predictions" in request.data:
             league.reveal_predictions = _as_bool(request.data.get("reveal_predictions"))
             league.save(update_fields=["reveal_predictions"])
+        # Owner turns the tournament-wide bonus predictions on/off: a datetime
+        # enables the feature and sets the pick deadline; null/"" turns it off.
+        if "bonus_lock_at" in request.data:
+            raw = request.data.get("bonus_lock_at")
+            if raw in (None, ""):
+                league.bonus_lock_at = None
+            else:
+                dt = parse_datetime(raw) if isinstance(raw, str) else None
+                if dt is None:
+                    raise ValidationError({"bonus_lock_at": consts.MSG_BONUS_BAD_DATETIME})
+                if timezone.is_naive(dt):
+                    dt = timezone.make_aware(dt)
+                league.bonus_lock_at = dt
+            league.save(update_fields=["bonus_lock_at"])
     return Response(_league_dict(league, membership, request))
 
 
