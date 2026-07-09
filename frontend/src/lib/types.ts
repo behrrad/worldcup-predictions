@@ -561,6 +561,45 @@ export interface BonusQuestionT {
   my_points: number | null;
 }
 
+// ----- In-app admin: enter members' bonus picks on their behalf -------------
+export interface AdminBonusLeagueT {
+  slug: string;
+  name: string;
+  competition: string;
+  member_count: number;
+  bonus_enabled: boolean;
+  completed_count: number;
+}
+
+export interface AdminBonusQuestionMeta {
+  kind: string;
+  label: string;
+  answer_type: "team" | "player" | "member";
+  points: number;
+}
+
+export interface AdminBonusMemberT {
+  membership_id: number;
+  name: string;
+  // kind -> selected option id (team / player / membership), or absent if unset.
+  picks: Record<string, number | null>;
+  count: number;
+  completed: boolean;
+}
+
+export interface AdminBonusPayload {
+  slug: string;
+  name: string;
+  bonus_enabled: boolean;
+  lock_at: string | null;
+  is_open: boolean;
+  questions: AdminBonusQuestionMeta[];
+  teams: TeamT[];
+  players: PlayerCandidateT[];
+  members_options: { id: number; name: string }[];
+  members: AdminBonusMemberT[];
+}
+
 export interface BonusResp {
   // The feature is on for this league (a lock deadline is set).
   enabled: boolean;

@@ -1312,3 +1312,129 @@ def admin_set_result(request, match_id):
         match.penalty_winner = consts.Advancer.NONE
     match.save()  # status -> FINISHED; post_save signal recomputes everyone's points
     return Response(_admin_match_dict(match))
+
+
+# --------------------------------------------------------------------------- #
+# In-app admin: enter a member's tournament-wide bonus predictions on their
+# behalf (gated to admins). Deliberately bypasses the per-league bonus lock —
+# it's an admin override for entering picks collected offline.
+# --------------------------------------------------------------------------- #
+def _admin_bonus_member(membership, preds_by_mem):
+    picks = {p.kind: _bonus_pick_value(p, p.kind) for p in preds_by_mem.get(membership.id, [])}
+    return {
+        "membership_id": membership.id,
+        "name": membership.user.public_name,
+        "picks": picks,
+        "count": len(picks),
+        "completed": len(picks) >= len(consts.BONUS_KIND_ORDER),
+    }
+
+
+@api_view(["GET"])
+def admin_bonus_leagues(request):
+    if not _is_admin(request.user):
+        raise PermissionDenied(consts.MSG_ADMIN_ONLY)
+    total_q = len(consts.BONUS_KIND_ORDER)
+    out = []
+    for league in League.objects.select_related("competition").order_by("name"):
+        member_ids = list(Membership.objects.filter(league=league).values_list("id", flat=True))
+        counts = {}
+        for mid in BonusPrediction.objects.filter(
+                membership__league=league).values_list("membership_id", flat=True):
+            counts[mid] = counts.get(mid, 0) + 1
+        out.append({
+            "slug": league.slug,
+            "name": league.name,
+            "competition": league.competition.name,
+            "member_count": len(member_ids),
+            "bonus_enabled": league.bonus_enabled,
+            "completed_count": sum(1 for mid in member_ids if counts.get(mid, 0) >= total_q),
+        })
+    return Response(out)
+
+
+def _admin_bonus_payload(league):
+    competition = league.competition
+    memberships = list(Membership.objects.filter(league=league).select_related("user"))
+    preds_by_mem = {}
+    for p in BonusPrediction.objects.filter(membership__league=league):
+        preds_by_mem.setdefault(p.membership_id, []).append(p)
+    return {
+        "slug": league.slug,
+        "name": league.name,
+        "bonus_enabled": league.bonus_enabled,
+        "lock_at": league.bonus_lock_at.isoformat() if league.bonus_lock_at else None,
+        "is_open": league.bonus_is_open(),
+        "questions": [
+            {
+                "kind": kind,
+                "label": consts.BONUS_KIND_LABELS[kind],
+                "answer_type": consts.BONUS_ANSWER_TYPE[kind],
+                "points": league.bonus_points_for(kind),
+            }
+            for kind in consts.BONUS_KIND_ORDER
+        ],
+        "teams": [_team(t) for t in competition.teams.order_by("group", "name_fa")],
+        "players": [
+            _player_candidate(pc)
+            for pc in competition.player_candidates.select_related("team").all()
+        ],
+        "members_options": [
+            {"id": m.id, "name": m.user.public_name} for m in memberships
+        ],
+        "members": [_admin_bonus_member(m, preds_by_mem) for m in memberships],
+    }
+
+
+def _admin_submit_bonus(request, league):
+    membership = get_object_or_404(
+        Membership, id=request.data.get("membership_id"), league=league)
+    items = request.data.get("picks", [])
+    if not isinstance(items, list):
+        raise ValidationError({"picks": consts.MSG_BONUS_BAD_FORMAT})
+
+    competition = league.competition
+    saved = 0
+    for item in items:
+        if not isinstance(item, dict):
+            continue
+        kind = item.get("kind")
+        if kind not in consts.BONUS_POINTS_FIELD:
+            continue
+        value = item.get("value")
+        if value in (None, "", 0):
+            BonusPrediction.objects.filter(membership=membership, kind=kind).delete()
+            saved += 1
+            continue
+        answer_type = consts.BONUS_ANSWER_TYPE[kind]
+        obj = _resolve_bonus_value(answer_type, value, competition, league)
+        if obj is None:
+            continue
+        defaults = {"team": None, "player": None, "target_membership": None}
+        if answer_type == consts.BonusAnswerType.TEAM:
+            defaults["team"] = obj
+        elif answer_type == consts.BonusAnswerType.PLAYER:
+            defaults["player"] = obj
+        else:
+            defaults["target_membership"] = obj
+        BonusPrediction.objects.update_or_create(
+            membership=membership, kind=kind, defaults=defaults)
+        saved += 1
+
+    preds = {}
+    for p in BonusPrediction.objects.filter(membership=membership):
+        preds.setdefault(membership.id, []).append(p)
+    return Response({"saved": saved, "member": _admin_bonus_member(membership, preds)})
+
+
+@api_view(["GET", "POST"])
+def admin_league_bonus(request, slug):
+    """Admin: read every member's bonus picks for a league, or POST to set one
+    member's picks. Body: {"membership_id", "picks": [{"kind", "value"}, ...]}.
+    Bypasses the bonus lock on purpose (admin entering picks on a member's behalf)."""
+    if not _is_admin(request.user):
+        raise PermissionDenied(consts.MSG_ADMIN_ONLY)
+    league = get_object_or_404(League, slug=slug)
+    if request.method == "POST":
+        return _admin_submit_bonus(request, league)
+    return Response(_admin_bonus_payload(league))

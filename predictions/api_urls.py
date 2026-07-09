@@ -40,4 +40,7 @@ urlpatterns = [
     # In-app admin: manual result entry (gated to admins inside the views).
     path("admin/matches/", api_views.admin_matches, name="api_admin_matches"),
     path("admin/matches/<int:match_id>/result/", api_views.admin_set_result, name="api_admin_set_result"),
+    # In-app admin: enter members' bonus predictions on their behalf.
+    path("admin/bonus/leagues/", api_views.admin_bonus_leagues, name="api_admin_bonus_leagues"),
+    path("admin/leagues/<str:slug>/bonus/", api_views.admin_league_bonus, name="api_admin_league_bonus"),
 ]
