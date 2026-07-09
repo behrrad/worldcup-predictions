@@ -125,6 +125,15 @@ class ScorePredictionTests(TestCase):
             self.assertEqual(tier, consts.Tier.EXACT)
             self.assertEqual(points, Decimal("20.00"), stage)
 
+    def test_custom_boost_multiplier_applies(self):
+        # A custom 2.5× set by the owner: exact QF score scores 10 * 2.5 = 25.00.
+        self.league.set_boost_multiplier(Decimal("2.5"))
+        m = self._match(2, 1, stage=consts.Stage.QUARTER)
+        points, tier = scoring.score_prediction(self.league, m, self._pred(m, 2, 1))
+        self.assertEqual(tier, consts.Tier.EXACT)
+        self.assertEqual(points, Decimal("25.00"))
+        self.assertEqual(self.league.boost_decision, consts.BoostDecision.ACCEPTED)
+
     def test_boost_leaves_group_stage_untouched(self):
         self.league.apply_boost()
         m = self._match(2, 1, stage=consts.Stage.GROUP)

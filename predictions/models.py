@@ -366,18 +366,27 @@ class League(models.Model):
         consts.Stage.FINAL: "multiplier_final",
     }
 
-    def apply_boost(self):
-        """Opt this league into the 2× knockout boost: raise the QF-onward
-        multipliers to consts.BOOST_TARGET_MULTIPLIER and record the decision.
+    def set_boost_multiplier(self, value):
+        """Set every QF-onward multiplier to `value` and mark the league opted in.
         Persists via save(update_fields=...). Returns the changed field names."""
         fields = ["boost_decision"]
         self.boost_decision = consts.BoostDecision.ACCEPTED
         for stage in consts.BOOST_STAGES:
             field = self._BOOST_FIELDS[stage]
-            setattr(self, field, consts.BOOST_TARGET_MULTIPLIER)
+            setattr(self, field, value)
             fields.append(field)
         self.save(update_fields=fields)
         return fields
+
+    def apply_boost(self):
+        """Opt into the boost at the default 2× (consts.BOOST_TARGET_MULTIPLIER)."""
+        return self.set_boost_multiplier(consts.BOOST_TARGET_MULTIPLIER)
+
+    @property
+    def boost_multiplier(self):
+        """The current QF-onward multiplier (they move together via the boost);
+        the quarter-final value represents the group."""
+        return self.multiplier_qf
 
     def decline_boost(self):
         """Record that the owner declined the 2× boost (multipliers stay as-is)."""

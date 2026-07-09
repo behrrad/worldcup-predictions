@@ -89,6 +89,12 @@ BOOST_TARGET_MULTIPLIER = Decimal("2.0")
 # Stages the boost applies to (quarter-finals and everything after).
 BOOST_STAGES = [Stage.QUARTER, Stage.SEMI, Stage.THIRD_PLACE, Stage.FINAL]
 
+# The owner may set the QF-onward multiplier to any value in this (inclusive)
+# range from the league page — the prompt's "accept" uses BOOST_TARGET_MULTIPLIER,
+# but a custom value lets them tune it. Bounds fit the field (max_digits=4).
+BOOST_MIN_MULTIPLIER = Decimal("1.0")
+BOOST_MAX_MULTIPLIER = Decimal("5.0")
+
 
 class BoostDecision:
     PENDING = "PENDING"     # owner hasn't answered the prompt yet
@@ -502,6 +508,9 @@ MSG_INVALID_RESULT = "نتیجهٔ واردشده نامعتبر است."
 MSG_OWNER_ONLY = "فقط مدیر مسابقه می‌تواند تنظیمات آن را تغییر دهد."
 MSG_EXPORT_INVALID_KEY = "کلید خروجی نامعتبر است."
 MSG_BOOST_ACTION_INVALID = "مقدار تصمیم ضریب نامعتبر است."
+MSG_BOOST_MULTIPLIER_INVALID = (
+    "ضریب باید عددی بین {min} تا {max} باشد."
+)
 
 
 # --------------------------------------------------------------------------- #

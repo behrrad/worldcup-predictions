@@ -46,7 +46,11 @@ export default async function Overview({
 
       {league.is_owner && (
         <div className="mt">
-          <BoostPrompt slug={slug} initial={league.boost_decision} />
+          <BoostPrompt
+            slug={slug}
+            decision={league.boost_decision}
+            multiplier={league.boost_multiplier}
+          />
         </div>
       )}
 
