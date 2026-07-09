@@ -301,6 +301,13 @@ class League(models.Model):
         consts.L_MULT_FINAL, max_digits=4, decimal_places=2,
         default=consts.DEFAULT_KNOCKOUT_MULTIPLIER)
 
+    # One-time owner decision on the mid-tournament 2× knockout boost. PENDING
+    # until the owner answers the prompt on the league page; ACCEPTED raises the
+    # QF-onward multipliers to consts.BOOST_TARGET_MULTIPLIER.
+    boost_decision = models.CharField(
+        consts.L_BOOST_DECISION, max_length=consts.BOOST_DECISION_MAX_LENGTH,
+        choices=consts.BOOST_DECISION_CHOICES, default=consts.BoostDecision.PENDING)
+
     # Tournament-wide "bonus" predictions (champion, Golden Boot, "who wins our
     # league", ...). Opt-in per league: `bonus_lock_at` set = the feature is on
     # and picks are editable until that moment; null = off. See predictions/consts.py.
@@ -370,6 +377,41 @@ class League(models.Model):
 
     def multiplier_for(self, stage: str):
         return self._stage_multiplier_map.get(stage, consts.DEFAULT_GROUP_MULTIPLIER)
+
+    # Map each boostable stage to the League field that stores its multiplier.
+    _BOOST_FIELDS = {
+        consts.Stage.QUARTER: "multiplier_qf",
+        consts.Stage.SEMI: "multiplier_sf",
+        consts.Stage.THIRD_PLACE: "multiplier_tp",
+        consts.Stage.FINAL: "multiplier_final",
+    }
+
+    def set_boost_multiplier(self, value):
+        """Set every QF-onward multiplier to `value` and mark the league opted in.
+        Persists via save(update_fields=...). Returns the changed field names."""
+        fields = ["boost_decision"]
+        self.boost_decision = consts.BoostDecision.ACCEPTED
+        for stage in consts.BOOST_STAGES:
+            field = self._BOOST_FIELDS[stage]
+            setattr(self, field, value)
+            fields.append(field)
+        self.save(update_fields=fields)
+        return fields
+
+    def apply_boost(self):
+        """Opt into the boost at the default 2× (consts.BOOST_TARGET_MULTIPLIER)."""
+        return self.set_boost_multiplier(consts.BOOST_TARGET_MULTIPLIER)
+
+    @property
+    def boost_multiplier(self):
+        """The current QF-onward multiplier (they move together via the boost);
+        the quarter-final value represents the group."""
+        return self.multiplier_qf
+
+    def decline_boost(self):
+        """Record that the owner declined the 2× boost (multipliers stay as-is)."""
+        self.boost_decision = consts.BoostDecision.DECLINED
+        self.save(update_fields=["boost_decision"])
 
     # -- bonus (tournament-wide) predictions ------------------------------- #
     @property

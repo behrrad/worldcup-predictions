@@ -117,6 +117,12 @@ export interface LeagueDetail {
   // When false, other members' predictions stay hidden even after a match locks.
   // Toggled by the owner; see RevealToggle.
   reveal_predictions: boolean;
+  // Owner's one-time decision on the 2× knockout boost: PENDING/ACCEPTED/DECLINED.
+  // The owner sees the opt-in prompt (BoostPrompt) while PENDING.
+  boost_decision: "PENDING" | "ACCEPTED" | "DECLINED";
+  // The current QF-onward multiplier (default 1.5, or 2× once boosted). The owner
+  // can set a custom value from the league page; see BoostPrompt.
+  boost_multiplier: number;
   // Shared with the whole league: anyone can use this link to download the
   // results .xlsx (upcoming predictions stay hidden inside the file).
   export_key: string;

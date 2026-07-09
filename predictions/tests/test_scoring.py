@@ -133,6 +133,44 @@ class ScorePredictionTests(TestCase):
         points, _ = scoring.score_prediction(self.league, m, self._pred(m, 0, 3))
         self.assertEqual(points, Decimal("3.00"))
 
+    def test_boost_doubles_qf_onward(self):
+        # After opting in, an exact QF score scores 10 * 2.0 = 20.00.
+        self.league.apply_boost()
+        for stage in consts.BOOST_STAGES:
+            m = self._match(2, 1, stage=stage)
+            points, tier = scoring.score_prediction(self.league, m, self._pred(m, 2, 1))
+            self.assertEqual(tier, consts.Tier.EXACT)
+            self.assertEqual(points, Decimal("20.00"), stage)
+
+    def test_custom_boost_multiplier_applies(self):
+        # A custom 2.5× set by the owner: exact QF score scores 10 * 2.5 = 25.00.
+        self.league.set_boost_multiplier(Decimal("2.5"))
+        m = self._match(2, 1, stage=consts.Stage.QUARTER)
+        points, tier = scoring.score_prediction(self.league, m, self._pred(m, 2, 1))
+        self.assertEqual(tier, consts.Tier.EXACT)
+        self.assertEqual(points, Decimal("25.00"))
+        self.assertEqual(self.league.boost_decision, consts.BoostDecision.ACCEPTED)
+
+    def test_boost_leaves_group_stage_untouched(self):
+        self.league.apply_boost()
+        m = self._match(2, 1, stage=consts.Stage.GROUP)
+        points, _ = scoring.score_prediction(self.league, m, self._pred(m, 2, 1))
+        self.assertEqual(points, Decimal("10.00"))  # group ×1.0, unchanged
+
+    def test_boost_does_not_touch_earlier_knockout_rounds(self):
+        # R32/R16 keep the default 1.5× — the boost is QF-onward only.
+        self.league.apply_boost()
+        m = self._match(2, 1, stage=consts.Stage.ROUND_OF_16)
+        points, _ = scoring.score_prediction(self.league, m, self._pred(m, 2, 1))
+        self.assertEqual(points, Decimal("15.00"))
+
+    def test_decline_keeps_default_knockout_multiplier(self):
+        self.league.decline_boost()
+        m = self._match(2, 1, stage=consts.Stage.QUARTER)
+        points, _ = scoring.score_prediction(self.league, m, self._pred(m, 2, 1))
+        self.assertEqual(points, Decimal("15.00"))  # still 10 * 1.5
+        self.assertEqual(self.league.boost_decision, consts.BoostDecision.DECLINED)
+
 
 class PenaltyShootoutTests(TestCase):
     """Knockout matches level at 120' and decided on penalties.

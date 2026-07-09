@@ -1,5 +1,6 @@
 import os
 import secrets
+from decimal import Decimal, InvalidOperation
 from urllib.parse import quote
 
 from django.conf import settings
@@ -174,6 +175,12 @@ def _league_dict(league, membership, request):
         # Whether other members' predictions are shown after a match locks
         # (owner-toggleable). The frontend renders the toggle for the owner.
         "reveal_predictions": league.reveal_predictions,
+        # Owner's one-time decision on the 2× knockout boost (PENDING/ACCEPTED/
+        # DECLINED). The frontend shows the opt-in prompt while it's PENDING.
+        "boost_decision": league.boost_decision,
+        # The current QF-onward multiplier the owner can tune (default 1.5, or 2×
+        # once boosted). Editable from the league page; see BoostPrompt.
+        "boost_multiplier": float(league.boost_multiplier),
         # The export key/link is shared with the whole league — anyone can use it
         # to download the results spreadsheet (upcoming picks stay hidden inside it).
         "export_key": league.export_key,
@@ -280,6 +287,23 @@ def _as_bool(value) -> bool:
     if isinstance(value, str):
         return value.strip().lower() in ("true", "1", "yes", "on")
     return bool(value)
+
+
+def _parse_boost_multiplier(value) -> Decimal:
+    """Validate a custom QF-onward multiplier from the request body: a number in
+    [BOOST_MIN_MULTIPLIER, BOOST_MAX_MULTIPLIER], quantized to 2 places. Raises
+    ValidationError otherwise."""
+    try:
+        parsed = Decimal(str(value)).quantize(Decimal("0.01"))
+    except (InvalidOperation, TypeError, ValueError):
+        parsed = None
+    if parsed is None or not (
+        consts.BOOST_MIN_MULTIPLIER <= parsed <= consts.BOOST_MAX_MULTIPLIER
+    ):
+        raise ValidationError(consts.MSG_BOOST_MULTIPLIER_INVALID.format(
+            min=consts.BOOST_MIN_MULTIPLIER, max=consts.BOOST_MAX_MULTIPLIER,
+        ))
+    return parsed
 
 
 def _update_profile(user, data):
@@ -538,6 +562,22 @@ def league_detail(request, slug):
         if "reveal_predictions" in request.data:
             league.reveal_predictions = _as_bool(request.data.get("reveal_predictions"))
             league.save(update_fields=["reveal_predictions"])
+        if "boost_decision" in request.data:
+            action = request.data.get("boost_decision")
+            if action == consts.BOOST_ACTION_ACCEPT:
+                league.apply_boost()
+                # QF+ isn't scored yet, so this only affects future matches; the
+                # recompute keeps already-finished stages consistent regardless.
+                scoring.recompute_league_scores(league)
+            elif action == consts.BOOST_ACTION_DECLINE:
+                league.decline_boost()
+            else:
+                raise ValidationError(consts.MSG_BOOST_ACTION_INVALID)
+        if "boost_multiplier" in request.data:
+            value = _parse_boost_multiplier(request.data.get("boost_multiplier"))
+            league.set_boost_multiplier(value)
+            scoring.recompute_league_scores(league)
+
         # Owner turns the tournament-wide bonus predictions on/off: a datetime
         # enables the feature and sets the pick deadline; null/"" turns it off.
         if "bonus_lock_at" in request.data:

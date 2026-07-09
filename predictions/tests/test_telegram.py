@@ -531,3 +531,49 @@ class TelegramEndpointTests(TestCase):
         res = APIClient().post(reverse("api_task_tick"), HTTP_X_TASK_KEY="secret")
         self.assertEqual(res.status_code, 200)
         self.assertIn("digests", res.json())
+
+
+class BroadcastAnnouncementTests(TestCase):
+    """One-off announcement broadcast (telegram.broadcast_announcement)."""
+
+    def setUp(self):
+        self.a = _linked(1001)
+        self.b = _linked(1002)
+        self.unlinked = make_user()  # no chat id -> unreachable
+        self.key = consts.ANNOUNCE_2X_CAMPAIGN
+
+    @override_settings(TELEGRAM_BOT_TOKEN="t", TELEGRAM_BOT_USERNAME="@mybot")
+    def test_sends_once_per_linked_user(self):
+        with mock.patch.object(telegram, "send_message", return_value=True) as sm:
+            sent = telegram.broadcast_announcement("hello", self.key)
+        self.assertEqual(sent, 2)
+        self.assertEqual(sm.call_count, 2)
+        self.assertEqual(
+            NotificationLog.objects.filter(kind=consts.NotifyKind.ANNOUNCE).count(), 2
+        )
+
+    @override_settings(TELEGRAM_BOT_TOKEN="t", TELEGRAM_BOT_USERNAME="@mybot")
+    def test_is_idempotent_on_rerun(self):
+        with mock.patch.object(telegram, "send_message", return_value=True):
+            telegram.broadcast_announcement("hello", self.key)
+        with mock.patch.object(telegram, "send_message", return_value=True) as sm2:
+            again = telegram.broadcast_announcement("hello", self.key)
+        self.assertEqual(again, 0)
+        self.assertEqual(sm2.call_count, 0)
+
+    def test_no_op_when_bot_unconfigured(self):
+        with mock.patch.object(telegram, "send_message", return_value=True) as sm:
+            sent = telegram.broadcast_announcement("hello", self.key)
+        self.assertEqual(sent, 0)
+        self.assertEqual(sm.call_count, 0)
+
+    @override_settings(TELEGRAM_BOT_TOKEN="t", TELEGRAM_BOT_USERNAME="@mybot")
+    def test_failed_send_is_retried_next_run(self):
+        with mock.patch.object(telegram, "send_message", return_value=False):
+            telegram.broadcast_announcement("hello", self.key)
+        # Nothing recorded as sent, so a later run (now succeeding) reaches everyone.
+        self.assertEqual(NotificationLog.objects.count(), 0)
+        with mock.patch.object(telegram, "send_message", return_value=True) as sm:
+            sent = telegram.broadcast_announcement("hello", self.key)
+        self.assertEqual(sent, 2)
+        self.assertEqual(sm.call_count, 2)
