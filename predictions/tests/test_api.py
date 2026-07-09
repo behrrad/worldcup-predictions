@@ -1131,3 +1131,48 @@ class BonusSettingsPatchTests(AuthedTestCase):
             reverse("api_league_detail", args=[league.slug]),
             {"bonus_lock_at": "not-a-date"}, format="json")
         self.assertEqual(res.status_code, 400)
+
+
+class AdminBonusTests(AuthedTestCase):
+    def setUp(self):
+        super().setUp()
+        self.admin = make_user(email="admin@test.com", is_staff=True)
+        self.client.force_authenticate(user=self.admin)
+        # League is LOCKED (deadline in the past) to prove admin bypasses it.
+        self.league = make_league(
+            self.comp, bonus_lock_at=timezone.now() - timedelta(hours=1))
+        self.member = join(self.league)
+        self.team = make_team(self.comp, name="تیم آ")
+
+    def test_non_admin_forbidden(self):
+        self.client.force_authenticate(user=self.user)  # ordinary user
+        self.assertEqual(
+            self.client.get(reverse("api_admin_bonus_leagues")).status_code, 403)
+        self.assertEqual(
+            self.client.get(
+                reverse("api_admin_league_bonus", args=[self.league.slug])).status_code, 403)
+
+    def test_admin_lists_leagues_with_completion(self):
+        res = self.client.get(reverse("api_admin_bonus_leagues"))
+        self.assertEqual(res.status_code, 200)
+        row = next(l for l in res.json() if l["slug"] == self.league.slug)
+        self.assertEqual(row["completed_count"], 0)
+        self.assertTrue(row["bonus_enabled"])
+
+    def test_admin_reads_members_and_options(self):
+        res = self.client.get(reverse("api_admin_league_bonus", args=[self.league.slug]))
+        self.assertEqual(res.status_code, 200)
+        data = res.json()
+        self.assertEqual(len(data["questions"]), len(consts.BONUS_KIND_ORDER))
+        self.assertEqual(len(data["members"]), self.league.memberships.count())
+
+    def test_admin_sets_pick_despite_lock(self):
+        res = self.client.post(
+            reverse("api_admin_league_bonus", args=[self.league.slug]),
+            {"membership_id": self.member.id,
+             "picks": [{"kind": consts.BonusKind.CHAMPION, "value": self.team.id}]},
+            format="json")
+        self.assertEqual(res.status_code, 200)
+        self.assertEqual(res.json()["saved"], 1)
+        self.assertTrue(BonusPrediction.objects.filter(
+            membership=self.member, kind=consts.BonusKind.CHAMPION, team=self.team).exists())

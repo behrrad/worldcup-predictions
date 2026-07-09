@@ -42,6 +42,15 @@ export default async function Dashboard() {
         </Link>
       )}
 
+      {me.is_admin && (
+        <Link className="card tile" href="/admin/bonus">
+          <strong>🏆 ثبت پیش‌بینی‌های ویژه (مدیر)</strong>
+          <div className="muted">
+            پیش‌بینی‌های ویژهٔ قهرمانی را به‌جای اعضا وارد کن.
+          </div>
+        </Link>
+      )}
+
       <div className="grid grid-2">
         <div className="card">
           <h2 className="card-title">🔑 پیوستن به مسابقه</h2>
