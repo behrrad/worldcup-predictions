@@ -141,6 +141,123 @@ MIN_FINISHED_PARTICIPATION_RATIO = 0.5
 
 
 # --------------------------------------------------------------------------- #
+# Tournament-wide "bonus" predictions (the «پیش‌بینی‌های ویژه» tab)
+# --------------------------------------------------------------------------- #
+# Alongside the per-match score predictions, a league can run a small set of
+# whole-tournament questions: who wins the cup, 2nd/3rd/4th, the Golden Boot &
+# Ball, and a social meta-pick — "who wins OUR league". Each question is a single
+# choice from a fixed set of options (a team, a shortlisted player, or a league
+# member), scored exact-match: full points if right, zero if wrong. Points are
+# per-league (editable in the admin); the whole feature is opt-in per league by
+# setting `bonus_lock_at` (null = off), which is also the deadline after which
+# picks can no longer be edited.
+class BonusKind:
+    CHAMPION = "champion"
+    RUNNER_UP = "runner_up"
+    THIRD = "third"
+    FOURTH = "fourth"
+    GOLDEN_BOOT = "golden_boot"
+    GOLDEN_BALL = "golden_ball"
+    LEAGUE_WINNER = "league_winner"
+
+
+BONUS_KIND_LABELS = {
+    BonusKind.CHAMPION: "قهرمان جام",
+    BonusKind.RUNNER_UP: "نایب‌قهرمان",
+    BonusKind.THIRD: "تیم سوم",
+    BonusKind.FOURTH: "تیم چهارم",
+    BonusKind.GOLDEN_BOOT: "آقای گل (بهترین گلزن)",
+    BonusKind.GOLDEN_BALL: "بهترین بازیکن تورنمنت",
+    BonusKind.LEAGUE_WINNER: "قهرمان مسابقهٔ ما",
+}
+
+BONUS_KIND_DESCRIPTIONS = {
+    BonusKind.CHAMPION: "حدس بزن کدام تیم قهرمان جام می‌شود.",
+    BonusKind.RUNNER_UP: "کدام تیم در فینال شکست می‌خورد و دوم می‌شود؟",
+    BonusKind.THIRD: "برندهٔ بازی رده‌بندی (مقام سوم) کدام تیم است؟",
+    BonusKind.FOURTH: "بازندهٔ بازی رده‌بندی (مقام چهارم) کدام تیم است؟",
+    BonusKind.GOLDEN_BOOT: "کدام بازیکن آقای گل تورنمنت می‌شود؟",
+    BonusKind.GOLDEN_BALL: "بهترین بازیکن کل تورنمنت کیست؟",
+    BonusKind.LEAGUE_WINNER: (
+        "حدس بزن چه کسی در همین مسابقه اول می‌شود. این امتیاز در آخرین مرحله و روی "
+        "جدول (امتیاز بازی‌ها + پیش‌بینی‌های قهرمانی) اعمال می‌شود؛ می‌توانی خودت را "
+        "هم انتخاب کنی."
+    ),
+}
+
+# Display / settlement order.
+BONUS_KIND_ORDER = [
+    BonusKind.CHAMPION,
+    BonusKind.RUNNER_UP,
+    BonusKind.THIRD,
+    BonusKind.FOURTH,
+    BonusKind.GOLDEN_BOOT,
+    BonusKind.GOLDEN_BALL,
+    BonusKind.LEAGUE_WINNER,
+]
+
+BONUS_KIND_CHOICES = [(k, BONUS_KIND_LABELS[k]) for k in BONUS_KIND_ORDER]
+
+
+# What kind of option a question is answered with.
+class BonusAnswerType:
+    TEAM = "team"        # a competition team (champion / 2nd / 3rd / 4th)
+    PLAYER = "player"    # a shortlisted player (Golden Boot / Ball)
+    MEMBER = "member"    # a league member (the "who wins our league" meta-pick)
+
+
+BONUS_ANSWER_TYPE = {
+    BonusKind.CHAMPION: BonusAnswerType.TEAM,
+    BonusKind.RUNNER_UP: BonusAnswerType.TEAM,
+    BonusKind.THIRD: BonusAnswerType.TEAM,
+    BonusKind.FOURTH: BonusAnswerType.TEAM,
+    BonusKind.GOLDEN_BOOT: BonusAnswerType.PLAYER,
+    BonusKind.GOLDEN_BALL: BonusAnswerType.PLAYER,
+    BonusKind.LEAGUE_WINNER: BonusAnswerType.MEMBER,
+}
+
+# Kinds whose correct answer is a competition-level fact recorded on the
+# TournamentOutcome (settled first), vs. the single meta-pick settled against the
+# frozen league standings (settled last, so it never feeds its own target).
+BONUS_OUTCOME_KINDS = [
+    k for k in BONUS_KIND_ORDER if k != BonusKind.LEAGUE_WINNER
+]
+
+# kind -> League points field.
+BONUS_POINTS_FIELD = {
+    BonusKind.CHAMPION: "points_champion",
+    BonusKind.RUNNER_UP: "points_runner_up",
+    BonusKind.THIRD: "points_third",
+    BonusKind.FOURTH: "points_fourth",
+    BonusKind.GOLDEN_BOOT: "points_golden_boot",
+    BonusKind.GOLDEN_BALL: "points_golden_ball",
+    BonusKind.LEAGUE_WINNER: "points_league_winner",
+}
+
+# outcome-based kind -> TournamentOutcome field holding the correct answer.
+BONUS_OUTCOME_FIELD = {
+    BonusKind.CHAMPION: "champion",
+    BonusKind.RUNNER_UP: "runner_up",
+    BonusKind.THIRD: "third_place",
+    BonusKind.FOURTH: "fourth_place",
+    BonusKind.GOLDEN_BOOT: "golden_boot",
+    BonusKind.GOLDEN_BALL: "golden_ball",
+}
+
+BONUS_KIND_MAX_LENGTH = 16   # widest key is "league_winner" (13)
+
+# Default per-question points (editable per league in the admin). Sized so the
+# whole bonus set is meaningful but doesn't swamp weeks of match predictions.
+DEFAULT_POINTS_CHAMPION = 20
+DEFAULT_POINTS_RUNNER_UP = 12
+DEFAULT_POINTS_THIRD = 8
+DEFAULT_POINTS_FOURTH = 5
+DEFAULT_POINTS_GOLDEN_BOOT = 10
+DEFAULT_POINTS_GOLDEN_BALL = 10
+DEFAULT_POINTS_LEAGUE_WINNER = 15
+
+
+# --------------------------------------------------------------------------- #
 # Scoring tiers (used to label *why* a prediction earned its points)
 # --------------------------------------------------------------------------- #
 class Tier:
@@ -365,6 +482,14 @@ V_PREDICTION = "پیش‌بینی"
 V_PREDICTION_PLURAL = "پیش‌بینی‌ها"
 V_MATCHSCORE = "امتیاز بازی"
 V_MATCHSCORE_PLURAL = "امتیازهای بازی"
+V_PLAYER_CANDIDATE = "بازیکن نامزد (جوایز فردی)"
+V_PLAYER_CANDIDATE_PLURAL = "بازیکنان نامزد"
+V_TOURNAMENT_OUTCOME = "نتیجهٔ نهایی تورنمنت"
+V_TOURNAMENT_OUTCOME_PLURAL = "نتایج نهایی تورنمنت"
+V_BONUS_PREDICTION = "پیش‌بینی ویژه"
+V_BONUS_PREDICTION_PLURAL = "پیش‌بینی‌های ویژه"
+V_BONUS_SCORE = "امتیاز ویژه"
+V_BONUS_SCORE_PLURAL = "امتیازهای ویژه"
 
 
 # --------------------------------------------------------------------------- #
@@ -409,6 +534,28 @@ L_POINTS_EXACT = "امتیاز نتیجهٔ دقیق"
 L_POINTS_CORRECT_DIFF = "امتیاز برنده + اختلاف گل"
 L_POINTS_CORRECT_WINNER = "امتیاز برندهٔ درست"
 L_POINTS_PARTICIPATION = "امتیاز شرکت در پیش‌بینی"
+# Bonus (tournament-wide) predictions
+L_BONUS_LOCK_AT = "مهلت ثبت پیش‌بینی‌های ویژه"
+L_POINTS_CHAMPION = "امتیاز حدس قهرمان"
+L_POINTS_RUNNER_UP = "امتیاز حدس نایب‌قهرمان"
+L_POINTS_THIRD = "امتیاز حدس تیم سوم"
+L_POINTS_FOURTH = "امتیاز حدس تیم چهارم"
+L_POINTS_GOLDEN_BOOT = "امتیاز حدس آقای گل"
+L_POINTS_GOLDEN_BALL = "امتیاز حدس بهترین بازیکن"
+L_POINTS_LEAGUE_WINNER = "امتیاز حدس قهرمان مسابقهٔ ما"
+L_PLAYER_CANDIDATE_NAME = "نام بازیکن"
+L_CHAMPION = "قهرمان"
+L_RUNNER_UP = "نایب‌قهرمان"
+L_THIRD_PLACE = "تیم سوم"
+L_FOURTH_PLACE = "تیم چهارم"
+L_GOLDEN_BOOT = "آقای گل"
+L_GOLDEN_BALL = "بهترین بازیکن"
+L_SETTLED_AT = "زمان محاسبهٔ امتیازهای ویژه"
+L_BONUS_KIND = "نوع پیش‌بینی ویژه"
+L_BONUS_TEAM = "تیم انتخابی"
+L_BONUS_PLAYER = "بازیکن انتخابی"
+L_BONUS_TARGET_MEMBERSHIP = "عضو انتخابی"
+L_BONUS_CORRECT = "درست بود؟"
 L_MULT_GROUP = "ضریب مرحلهٔ گروهی"
 L_MULT_R32 = "ضریب یک‌شانزدهم نهایی"
 L_MULT_R16 = "ضریب یک‌هشتم نهایی"
@@ -449,6 +596,10 @@ HELP_REVEAL_PREDICTIONS = (
     "نمایش داده می‌شود. اگر خاموش باشد، پیش‌بینی‌ها همیشه خصوصی می‌مانند."
 )
 HELP_SLUG = "اگر خالی بماند به‌صورت خودکار ساخته می‌شود."
+HELP_BONUS_LOCK_AT = (
+    "تا این زمان اعضا می‌توانند پیش‌بینی‌های ویژه (قهرمان، آقای گل، قهرمان مسابقه و…) "
+    "را ثبت یا ویرایش کنند. اگر خالی باشد، این بخش برای این مسابقه غیرفعال است."
+)
 HELP_COUNT_FOR_SCORING = (
     "اگر خاموش باشد، این بازی در امتیازها و جدول رده‌بندی محاسبه نمی‌شود؛ "
     "پیش‌بینی‌ها و نتیجه حفظ می‌شوند ولی امتیازی به همراه ندارند."
@@ -464,6 +615,10 @@ MSG_ALREADY_MEMBER = "شما از قبل عضو این مسابقه هستید."
 MSG_INVALID_INVITE = "کد دعوت نامعتبر است."
 MSG_PREDICTION_SAVED = "پیش‌بینی شما ذخیره شد."
 MSG_PREDICTION_LOCKED = "زمان پیش‌بینی این بازی به پایان رسیده است."
+MSG_BONUS_NOT_ENABLED = "پیش‌بینی‌های ویژه برای این مسابقه فعال نشده است."
+MSG_BONUS_LOCKED = "مهلت ثبت پیش‌بینی‌های ویژه به پایان رسیده است."
+MSG_BONUS_BAD_FORMAT = "قالب پیش‌بینی‌های ویژه نامعتبر است."
+MSG_BONUS_BAD_DATETIME = "مهلت واردشده نامعتبر است."
 MSG_NOT_A_MEMBER = "شما عضو این مسابقه نیستید."
 MSG_PREDICTIONS_NOTHING = "هیچ پیش‌بینی قابل ثبتی وجود نداشت."
 
@@ -477,12 +632,17 @@ BRAND_NAME = "پیش‌بینی جام جهانی"
 ADMIN_INDEX_TITLE = "پنل مدیریت"
 ADMIN_SECTION_SCORING = "تنظیمات امتیازدهی"
 ADMIN_SECTION_MULTIPLIERS = "ضریب مراحل حذفی"
+ADMIN_SECTION_BONUS = "پیش‌بینی‌های ویژه (قهرمانی)"
 ADMIN_SECTION_GENERAL = "اطلاعات کلی"
 ACTION_RECOMPUTE_MATCH = "محاسبهٔ دوبارهٔ امتیازِ بازی‌های انتخاب‌شده"
 ACTION_RECOMPUTE_LEAGUE = "محاسبهٔ دوبارهٔ کل امتیازهای مسابقه"
 ACTION_REGENERATE_EXPORT_KEY = "ساخت دوبارهٔ کلید خروجی (کلید قبلی باطل می‌شود)"
+ACTION_AUTOFILL_PLACES = "پرکردن خودکار مقام‌ها از نتایج فینال و رده‌بندی"
+ACTION_SETTLE_BONUS = "محاسبهٔ امتیاز پیش‌بینی‌های ویژه"
 MSG_ADMIN_RECOMPUTED = "{n} امتیاز دوباره محاسبه شد."
 MSG_ADMIN_EXPORT_KEYS_REGENERATED = "{n} کلید خروجی دوباره ساخته شد."
+MSG_ADMIN_PLACES_AUTOFILLED = "مقام‌ها از روی نتایج فینال/رده‌بندی پر شد ({n} نتیجه)."
+MSG_ADMIN_BONUS_SETTLED = "{n} امتیاز ویژه محاسبه شد."
 COL_SCORE = "نتیجه"
 COL_MEMBER_COUNT = "تعداد اعضا"
 COL_PREDICTION = "پیش‌بینی"

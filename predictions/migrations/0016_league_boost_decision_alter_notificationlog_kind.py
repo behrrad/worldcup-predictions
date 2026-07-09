@@ -6,7 +6,7 @@ from django.db import migrations, models
 class Migration(migrations.Migration):
 
     dependencies = [
-        ('predictions', '0014_match_count_for_scoring'),
+        ('predictions', '0015_bonus_predictions'),
     ]
 
     operations = [

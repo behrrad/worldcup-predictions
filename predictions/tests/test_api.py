@@ -15,7 +15,15 @@ from rest_framework.test import APITestCase
 
 from accounts import consts as acc_consts
 from predictions import consts
-from predictions.models import League, Match, Membership, Prediction
+from predictions.models import (
+    BonusPrediction,
+    League,
+    Match,
+    Membership,
+    PlayerCandidate,
+    Prediction,
+    TournamentOutcome,
+)
 from predictions.throttles import JoinLeagueThrottle
 
 from .factories import (
@@ -991,3 +999,135 @@ class AllPredictionsApiTests(AuthedTestCase):
             reverse("api_league_all_predictions", args=[other_league.slug])
         )
         self.assertEqual(res.status_code, 404)
+
+
+class BonusApiTests(AuthedTestCase):
+    def setUp(self):
+        super().setUp()
+        self.league = make_league(
+            self.comp, owner=self.user,
+            bonus_lock_at=timezone.now() + timedelta(days=1),
+        )
+        self.team_a = make_team(self.comp, name="آلفا")
+        self.team_b = make_team(self.comp, name="بتا")
+        self.player = PlayerCandidate.objects.create(competition=self.comp, name="ستاره")
+
+    def _url(self, league=None):
+        return reverse("api_league_bonus", args=[(league or self.league).slug])
+
+    def test_get_lists_questions_and_options(self):
+        res = self.client.get(self._url())
+        self.assertEqual(res.status_code, 200)
+        data = res.json()
+        self.assertTrue(data["enabled"])
+        self.assertTrue(data["is_open"])
+        self.assertFalse(data["settled"])
+        self.assertEqual(len(data["questions"]), len(consts.BONUS_KIND_ORDER))
+        self.assertEqual(len(data["teams"]), 2)
+        self.assertEqual(len(data["players"]), 1)
+        # The owner is the only member so far.
+        self.assertEqual(len(data["members"]), 1)
+
+    def test_post_saves_team_and_member_picks(self):
+        res = self.client.post(self._url(), {"picks": [
+            {"kind": consts.BonusKind.CHAMPION, "value": self.team_a.id},
+            {"kind": consts.BonusKind.LEAGUE_WINNER,
+             "value": Membership.objects.get(league=self.league, user=self.user).id},
+        ]}, format="json")
+        self.assertEqual(res.status_code, 200)
+        self.assertEqual(res.json()["saved"], 2)
+        champ = BonusPrediction.objects.get(
+            membership__user=self.user, kind=consts.BonusKind.CHAMPION)
+        self.assertEqual(champ.team_id, self.team_a.id)
+
+    def test_post_rejects_foreign_option(self):
+        # A team from a different competition must not be accepted.
+        other_comp = make_competition(name="جام دیگر")
+        alien = make_team(other_comp, name="بیگانه")
+        res = self.client.post(self._url(), {"picks": [
+            {"kind": consts.BonusKind.CHAMPION, "value": alien.id},
+        ]}, format="json")
+        # Invalid option is skipped, not saved.
+        self.assertEqual(res.json()["saved"], 0)
+        self.assertFalse(BonusPrediction.objects.filter(
+            membership__user=self.user, kind=consts.BonusKind.CHAMPION).exists())
+
+    def test_empty_value_clears_pick(self):
+        BonusPrediction.objects.create(
+            membership=Membership.objects.get(league=self.league, user=self.user),
+            kind=consts.BonusKind.CHAMPION, team=self.team_a)
+        res = self.client.post(self._url(), {"picks": [
+            {"kind": consts.BonusKind.CHAMPION, "value": None},
+        ]}, format="json")
+        self.assertEqual(res.json()["saved"], 1)
+        self.assertFalse(BonusPrediction.objects.filter(
+            membership__user=self.user, kind=consts.BonusKind.CHAMPION).exists())
+
+    def test_post_rejected_when_locked(self):
+        self.league.bonus_lock_at = timezone.now() - timedelta(minutes=1)
+        self.league.save(update_fields=["bonus_lock_at"])
+        res = self.client.post(self._url(), {"picks": [
+            {"kind": consts.BonusKind.CHAMPION, "value": self.team_a.id},
+        ]}, format="json")
+        self.assertEqual(res.status_code, 400)
+
+    def test_post_rejected_when_not_enabled(self):
+        disabled = make_league(self.comp, owner=self.user, name="بدون ویژه")
+        res = self.client.post(self._url(disabled), {"picks": [
+            {"kind": consts.BonusKind.CHAMPION, "value": self.team_a.id},
+        ]}, format="json")
+        self.assertEqual(res.status_code, 400)
+
+    def test_settled_get_shows_result(self):
+        m = Membership.objects.get(league=self.league, user=self.user)
+        BonusPrediction.objects.create(
+            membership=m, kind=consts.BonusKind.CHAMPION, team=self.team_a)
+        TournamentOutcome.objects.create(
+            competition=self.comp, champion=self.team_a,
+            settled_at=timezone.now())
+        from predictions import scoring
+        scoring.settle_bonus_scores(self.comp)
+
+        data = self.client.get(self._url()).json()
+        self.assertTrue(data["settled"])
+        q = next(x for x in data["questions"] if x["kind"] == consts.BonusKind.CHAMPION)
+        self.assertEqual(q["correct"], self.team_a.id)
+        self.assertTrue(q["my_correct"])
+        self.assertEqual(q["my_points"], float(self.league.points_champion))
+
+    def test_non_member_gets_404(self):
+        other_league = make_league(self.comp, bonus_lock_at=timezone.now() + timedelta(days=1))
+        res = self.client.get(self._url(other_league))
+        self.assertEqual(res.status_code, 404)
+
+
+class BonusSettingsPatchTests(AuthedTestCase):
+    def test_owner_sets_and_clears_bonus_deadline(self):
+        league = make_league(self.comp, owner=self.user)
+        url = reverse("api_league_detail", args=[league.slug])
+        iso = (timezone.now() + timedelta(days=1)).isoformat()
+        res = self.client.patch(url, {"bonus_lock_at": iso}, format="json")
+        self.assertEqual(res.status_code, 200)
+        self.assertTrue(res.json()["scoring"]["bonus_enabled"])
+        self.assertIsNotNone(res.json()["scoring"]["bonus_lock_at"])
+        league.refresh_from_db()
+        self.assertIsNotNone(league.bonus_lock_at)
+        # Clearing turns the feature back off.
+        res = self.client.patch(url, {"bonus_lock_at": None}, format="json")
+        self.assertFalse(res.json()["scoring"]["bonus_enabled"])
+        self.assertIsNone(res.json()["scoring"]["bonus_lock_at"])
+
+    def test_member_cannot_set_bonus_deadline(self):
+        league = make_league(self.comp)  # owned by someone else
+        join(league, user=self.user)
+        res = self.client.patch(
+            reverse("api_league_detail", args=[league.slug]),
+            {"bonus_lock_at": timezone.now().isoformat()}, format="json")
+        self.assertEqual(res.status_code, 403)
+
+    def test_bad_datetime_rejected(self):
+        league = make_league(self.comp, owner=self.user)
+        res = self.client.patch(
+            reverse("api_league_detail", args=[league.slug]),
+            {"bonus_lock_at": "not-a-date"}, format="json")
+        self.assertEqual(res.status_code, 400)

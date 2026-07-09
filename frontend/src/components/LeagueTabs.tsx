@@ -9,6 +9,7 @@ export default function LeagueTabs({ slug }: { slug: string }) {
   const tabs = [
     { href: base, label: "نمای کلی" },
     { href: `${base}/predictions`, label: "ثبت پیش‌بینی" },
+    { href: `${base}/bonus`, label: "پیش‌بینی‌های ویژه" },
     { href: `${base}/all-predictions`, label: "پیش‌بینی همه" },
     { href: `${base}/leaderboard`, label: "جدول امتیازات" },
     { href: `${base}/progression`, label: "نمودار روند" },
