@@ -870,6 +870,76 @@ def league_bonus(request, slug):
     return Response(_bonus_payload(request, membership, league, now))
 
 
+def _bonus_answer_label(pred):
+    """The chosen option rendered for the reveal: {answer, flag}, or None."""
+    answer_type = consts.BONUS_ANSWER_TYPE.get(pred.kind)
+    if answer_type == consts.BonusAnswerType.TEAM and pred.team:
+        return {"answer": pred.team.name_fa, "flag": pred.team.flag_emoji}
+    if answer_type == consts.BonusAnswerType.PLAYER and pred.player:
+        return {"answer": pred.player.name, "flag": ""}
+    if answer_type == consts.BonusAnswerType.MEMBER and pred.target_membership:
+        return {"answer": pred.target_membership.user.public_name, "flag": ""}
+    return None
+
+
+@api_view(["GET"])
+def league_bonus_all(request, slug):
+    """Everyone's bonus picks, revealed after the deadline — EXCEPT the
+    "who wins our league" pick, which stays hidden until settlement (the final
+    reveal), so knowing who backed whom doesn't spoil the ending."""
+    membership = _get_membership(request, slug)
+    league = membership.league
+    now = timezone.now()
+    is_open = league.bonus_is_open(now)
+    revealed = league.bonus_enabled and not is_open
+    outcome = TournamentOutcome.objects.filter(competition=league.competition).first()
+    settled = outcome is not None and outcome.settled_at is not None
+
+    by_kind = {}
+    for p in (
+        BonusPrediction.objects.filter(membership__league=league)
+        .select_related("membership__user", "team", "player", "target_membership__user")
+    ):
+        by_kind.setdefault(p.kind, []).append(p)
+
+    questions = []
+    for kind in consts.BONUS_KIND_ORDER:
+        is_league_winner = kind == consts.BonusKind.LEAGUE_WINNER
+        # Outright picks reveal once the deadline passes; the league-winner pick
+        # only at settlement.
+        show = settled if is_league_winner else revealed
+        picks = []
+        if show:
+            for p in by_kind.get(kind, []):
+                label = _bonus_answer_label(p)
+                if label is None:
+                    continue
+                picks.append({
+                    "name": p.membership.user.public_name,
+                    "is_me": p.membership_id == membership.id,
+                    "answer": label["answer"],
+                    "flag": label["flag"],
+                })
+            picks.sort(key=lambda r: (not r["is_me"], r["name"]))
+        questions.append({
+            "kind": kind,
+            "label": consts.BONUS_KIND_LABELS[kind],
+            "answer_type": consts.BONUS_ANSWER_TYPE[kind],
+            "points": league.bonus_points_for(kind),
+            "hidden": is_league_winner and not settled,
+            "picks": picks,
+        })
+
+    return Response({
+        "enabled": league.bonus_enabled,
+        "is_open": is_open,
+        "revealed": revealed,
+        "settled": settled,
+        "member_count": league.memberships.count(),
+        "questions": questions,
+    })
+
+
 @api_view(["GET"])
 def league_fun_stats(request, slug):
     membership = _get_membership(request, slug)

@@ -31,6 +31,8 @@ urlpatterns = [
     path("leagues/<str:slug>/leaderboard/", api_views.league_leaderboard, name="api_leaderboard"),
     # Tournament-wide bonus predictions (champion, Golden Boot/Ball, league winner).
     path("leagues/<str:slug>/bonus/", api_views.league_bonus, name="api_league_bonus"),
+    # Everyone's bonus picks (revealed after the deadline; league-winner at settle).
+    path("leagues/<str:slug>/bonus/all/", api_views.league_bonus_all, name="api_league_bonus_all"),
     path("leagues/<str:slug>/recap/", api_views.league_recap, name="api_league_recap"),
     path("leagues/<str:slug>/fun-stats/", api_views.league_fun_stats, name="api_league_fun_stats"),
     # Points & rank progression per finished match — the player-toggle line chart.
