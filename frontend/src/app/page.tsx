@@ -29,6 +29,9 @@ export default async function Home() {
           <Link className="btn btn-outline" href="/sign-in">
             ورود
           </Link>
+          <Link className="btn btn-outline" href="/scoreboard">
+            جدول کل بازیکنان
+          </Link>
         </div>
       </section>
 

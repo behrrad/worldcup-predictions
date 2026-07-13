@@ -15,6 +15,8 @@ urlpatterns = [
     # A player's average points-per-prediction over time (across all their leagues).
     path("players/<int:user_id>/average/", api_views.player_average, name="api_player_average"),
     path("competitions/", api_views.competitions, name="api_competitions"),
+    # Public site-wide scoreboard: fair ×1 totals, player averages, league averages.
+    path("scoreboard/", api_views.global_scoreboard, name="api_global_scoreboard"),
     # In-play scores (display only; lazily refreshed from the live provider).
     path("live/", api_views.live_scores, name="api_live_scores"),
     # Periodic job trigger (scheduler/cron): reminders + live + finalize.

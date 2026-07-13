@@ -278,6 +278,18 @@ TIER_LABELS = {
 
 TIER_CHOICES = [(key, label) for key, label in TIER_LABELS.items()]
 
+# The site-wide "fair" scale used by the global scoreboard: every prediction is
+# judged on the *default* point ladder with **no stage multiplier** (×1 for all
+# matches), so players from leagues with different point configs, knockout
+# multipliers, or the 2× boost stay comparable on one board.
+FAIR_TIER_POINTS = {
+    Tier.EXACT: DEFAULT_POINTS_EXACT,
+    Tier.DIFF: DEFAULT_POINTS_CORRECT_DIFF,
+    Tier.WINNER: DEFAULT_POINTS_CORRECT_WINNER,
+    Tier.PARTICIPATION: DEFAULT_POINTS_PARTICIPATION,
+    Tier.NONE: POINTS_NO_PREDICTION,
+}
+
 
 # --------------------------------------------------------------------------- #
 # Knockout penalty shootouts (who advances when a game is level at 120')
@@ -677,12 +689,14 @@ MSG_BOOST_MULTIPLIER_INVALID = (
 # Rate limiting (DRF throttling)
 # --------------------------------------------------------------------------- #
 # Scope names referenced by the throttle classes in predictions/throttles.py
-# and by DEFAULT_THROTTLE_RATES in config/settings.py. (No anon scope: every
-# endpoint requires auth, so anonymous requests never reach throttling.)
+# and by DEFAULT_THROTTLE_RATES in config/settings.py. Almost every endpoint
+# requires auth (throttled per user); the two public ones — the results export
+# and the global scoreboard — get their own anonymous, IP-keyed scopes.
 THROTTLE_SCOPE_USER = "user"
 THROTTLE_SCOPE_PREDICT = "predict"
 THROTTLE_SCOPE_JOIN = "league-join"
-THROTTLE_SCOPE_EXPORT = "export"   # the one anonymous endpoint (key-gated .xlsx download)
+THROTTLE_SCOPE_EXPORT = "export"   # anonymous endpoint (key-gated .xlsx download)
+THROTTLE_SCOPE_SCOREBOARD = "scoreboard"  # anonymous endpoint (public global scoreboard)
 
 # Default request rates per scope (DRF "<number>/<period>" syntax). These are
 # the defaults; each is overridable via the matching env var in settings.py.
@@ -690,6 +704,7 @@ THROTTLE_RATE_USER = "300/min"     # authenticated requests (per user) — basel
 THROTTLE_RATE_PREDICT = "60/min"   # prediction submits (per user)
 THROTTLE_RATE_JOIN = "20/min"      # league-join attempts (per user)
 THROTTLE_RATE_EXPORT = "30/min"    # results-export downloads (per client IP, anonymous)
+THROTTLE_RATE_SCOREBOARD = "60/min"  # global-scoreboard reads (per client IP, anonymous)
 
 
 # --------------------------------------------------------------------------- #
