@@ -5,7 +5,7 @@ from urllib.parse import quote
 
 from django.conf import settings
 from django.contrib.auth import get_user_model
-from django.db.models import Count
+from django.db.models import Count, F
 from django.http import HttpResponse
 from django.shortcuts import get_object_or_404
 from django.utils import timezone
@@ -36,7 +36,12 @@ from .models import (
     Team,
     TournamentOutcome,
 )
-from .throttles import EXPORT_THROTTLES, JOIN_LEAGUE_THROTTLES, PREDICT_THROTTLES
+from .throttles import (
+    EXPORT_THROTTLES,
+    JOIN_LEAGUE_THROTTLES,
+    PREDICT_THROTTLES,
+    SCOREBOARD_THROTTLES,
+)
 
 User = get_user_model()
 
@@ -492,6 +497,64 @@ def player_detail(request, user_id):
                 "competition": m.league.competition.name,
             }
             for m in shared
+        ],
+    })
+
+
+@api_view(["GET"])
+@permission_classes([AllowAny])
+@throttle_classes(SCOREBOARD_THROTTLES)
+def global_scoreboard(request):
+    """The site-wide scoreboard (public — the landing page links to it).
+
+    Every player of the active competition on one "fair" scale: default point
+    ladder, ×1 for every match (see scoring.global_scoreboard). Anonymous
+    visitors get the same payload with every `is_me` False."""
+    # Latest-starting active competition. The default Meta ordering
+    # (["-start_date", ...]) puts NULL start_dates *first* on Postgres, so an
+    # active competition without a date would shadow the real one — sort them last.
+    competition = (
+        Competition.objects.filter(is_active=True)
+        .order_by(F("start_date").desc(nulls_last=True), "name")
+        .first()
+    )
+    if competition is None:
+        return Response({
+            "competition": None, "finished_count": 0,
+            "players": [], "leagues": [],
+        })
+    board = scoring.global_scoreboard(competition)
+    me_id = request.user.id if request.user else None
+    return Response({
+        "competition": competition.name,
+        "finished_count": board["finished_count"],
+        "players": [
+            {
+                "user_id": r["user"].id,
+                "name": r["user"].public_name,
+                "rank": r["rank"],
+                "total": float(r["total"]),
+                "played": r["played"],
+                "exact_count": r["exact_count"],
+                "avg_points": float(r["avg_points"]),
+                "avg_rank": r["avg_rank"],
+                "eligible_for_avg": r["eligible_for_avg"],
+                "is_me": r["user"].id == me_id,
+            }
+            for r in board["players"]
+        ],
+        "leagues": [
+            {
+                "id": r["league"].id,
+                "name": r["league"].name,
+                "rank": r["rank"],
+                "avg_points": (
+                    float(r["avg_points"]) if r["avg_points"] is not None else None
+                ),
+                "member_count": r["member_count"],
+                "eligible_count": r["eligible_count"],
+            }
+            for r in board["leagues"]
         ],
     })
 

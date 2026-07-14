@@ -648,3 +648,41 @@ export interface BonusResp {
   members: BonusMemberT[];
   questions: BonusQuestionT[];
 }
+
+// --------------------------------------------------------------------------- //
+// Global scoreboard (/scoreboard — public, GET /api/scoreboard/)
+// --------------------------------------------------------------------------- //
+export interface GlobalPlayerRow {
+  user_id: number;
+  name: string;
+  // Rank by fair total: every prediction on the default point ladder with a
+  // ×1 multiplier for all matches, so leagues with different configs compare.
+  rank: number;
+  total: number;
+  played: number;
+  exact_count: number;
+  // Average points per predicted game (4 decimals); avg_rank only for players
+  // who predicted at least half of the finished matches.
+  avg_points: number;
+  avg_rank: number | null;
+  eligible_for_avg: boolean;
+  is_me: boolean;
+}
+
+export interface GlobalLeagueRow {
+  id: number;
+  name: string;
+  // Mean of the eligible members' per-game averages; null (and rank null)
+  // when no member cleared the half-of-finished-matches bar.
+  rank: number | null;
+  avg_points: number | null;
+  member_count: number;
+  eligible_count: number;
+}
+
+export interface GlobalScoreboardResp {
+  competition: string | null;
+  finished_count: number;
+  players: GlobalPlayerRow[];
+  leagues: GlobalLeagueRow[];
+}

@@ -25,6 +25,9 @@ export default function Header() {
           </span>
         </Link>
         <nav className="nav">
+          <Link className="nav-link" href="/scoreboard">
+            جدول کل
+          </Link>
           <Link className="nav-link" href="/how-it-works">
             راهنما
           </Link>

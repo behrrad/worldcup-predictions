@@ -1178,6 +1178,59 @@ class AdminBonusTests(AuthedTestCase):
             membership=self.member, kind=consts.BonusKind.CHAMPION, team=self.team).exists())
 
 
+class GlobalScoreboardApiTests(APITestCase):
+    """/api/scoreboard/ — the public, site-wide fair (×1) standings."""
+
+    def setUp(self):
+        cache.clear()  # the endpoint is anon-throttled by IP; isolate tests
+        self.comp = make_competition()
+        self.league = make_league(self.comp)
+        self.owner = self.league.owner
+        self.member = join(self.league)
+        m = make_match(self.comp, stage=consts.Stage.ROUND_OF_16)
+        Prediction.objects.create(
+            membership=self.member, match=m, predicted_home=2, predicted_away=0,
+        )
+        m.home_score, m.away_score = 2, 0
+        m.save()
+
+    def test_anonymous_access(self):
+        res = APIClient().get(reverse("api_global_scoreboard"))
+        self.assertEqual(res.status_code, 200)
+        data = res.json()
+        by_id = {p["user_id"]: p for p in data["players"]}
+        # Fair scale: exact knockout pick = 10 (default ladder, no ×1.5).
+        self.assertEqual(by_id[self.member.user_id]["total"], 10.0)
+        self.assertEqual(by_id[self.member.user_id]["rank"], 1)
+        self.assertEqual(by_id[self.member.user_id]["avg_points"], 10.0)
+        self.assertEqual(by_id[self.member.user_id]["avg_rank"], 1)
+        self.assertEqual(by_id[self.owner.id]["total"], 0.0)
+        self.assertIsNone(by_id[self.owner.id]["avg_rank"])
+        # Nobody is "me" for an anonymous visitor.
+        self.assertFalse(any(p["is_me"] for p in data["players"]))
+        self.assertEqual(data["finished_count"], 1)
+        self.assertEqual(len(data["leagues"]), 1)
+        self.assertEqual(data["leagues"][0]["avg_points"], 10.0)
+        self.assertEqual(data["leagues"][0]["eligible_count"], 1)
+        self.assertEqual(data["leagues"][0]["member_count"], 2)
+
+    def test_signed_in_user_is_marked(self):
+        client = APIClient()
+        client.force_authenticate(user=self.member.user)
+        data = client.get(reverse("api_global_scoreboard")).json()
+        me = [p for p in data["players"] if p["is_me"]]
+        self.assertEqual(len(me), 1)
+        self.assertEqual(me[0]["user_id"], self.member.user_id)
+
+    def test_empty_without_active_competition(self):
+        self.comp.is_active = False
+        self.comp.save()
+        data = APIClient().get(reverse("api_global_scoreboard")).json()
+        self.assertIsNone(data["competition"])
+        self.assertEqual(data["players"], [])
+        self.assertEqual(data["leagues"], [])
+
+
 class BonusRevealTests(AuthedTestCase):
     def setUp(self):
         super().setUp()

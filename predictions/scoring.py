@@ -573,6 +573,193 @@ def user_average_series(user):
 
 
 # --------------------------------------------------------------------------- #
+# Global scoreboard — every player on the site, on one "fair" ×1 scale
+# --------------------------------------------------------------------------- #
+def fair_prediction_points(match, prediction):
+    """
+    (Decimal points, tier) one prediction earns on one finished match under the
+    site-wide fair scale: the default point ladder (consts.FAIR_TIER_POINTS)
+    with no stage multiplier, so members of leagues with different point
+    configs, knockout multipliers, or the 2× boost stay comparable. The
+    knockout-shootout tier rules still apply — the tier depends only on the
+    prediction and the result, never on league settings.
+    """
+    if prediction is None:
+        return _ZERO, consts.Tier.NONE
+    if (match.penalty_winner in consts.ADVANCER_VALUES
+            and match.stage in consts.KNOCKOUT_STAGES
+            and match.home_score == match.away_score):
+        tier = penalty_tier(
+            prediction, match.home_score, match.away_score, match.penalty_winner,
+        )
+    else:
+        tier = base_tier(
+            prediction.predicted_home, prediction.predicted_away,
+            match.home_score, match.away_score,
+        )
+    return Decimal(consts.FAIR_TIER_POINTS[tier]).quantize(_CENTS), tier
+
+
+def global_scoreboard(competition):
+    """
+    Site-wide standings across every league of `competition`, scored with
+    fair_prediction_points (default ladder, ×1 everywhere; the one-off bonus
+    picks are league-specific and excluded). Returns:
+
+        {"finished_count": int, "players": [...], "leagues": [...]}
+
+    players — one row per *user*. A user who belongs to several leagues counts
+    each match once: their earliest-submitted prediction for it (the first
+    commitment; later copies in other leagues don't double-count). Each row has
+    `rank` (by fair total) plus the per-game average view — `avg_points` and
+    `avg_rank`, the latter only for users who predicted at least
+    consts.MIN_FINISHED_PARTICIPATION_RATIO of the finished matches (the same
+    bar the league leaderboards use).
+
+    leagues — one row per league: `avg_points` is the plain mean of its
+    *eligible* members' per-game averages (each membership judged on its own
+    predictions), so leagues of different sizes and configs compare on
+    prediction quality alone. A league with no eligible member gets
+    avg_points/rank None and sorts after the ranked ones.
+    """
+    from .models import League, Match, Membership, Prediction
+
+    finished = {
+        m.id: m
+        for m in Match.objects.filter(
+            competition=competition, status=consts.MatchStatus.FINISHED,
+        ).exclude(count_for_scoring=False)
+    }
+    finished_count = len(finished)
+    min_played = finished_count * consts.MIN_FINISHED_PARTICIPATION_RATIO
+
+    memberships = list(
+        Membership.objects.filter(league__competition=competition)
+        .select_related("user")
+    )
+
+    # Seed every member so users with no prediction yet still appear (at zero).
+    players = {}
+    for ms in memberships:
+        players.setdefault(ms.user_id, {
+            "user": ms.user, "total": _ZERO, "played": 0,
+            "exact_count": 0, "seen": set(),
+        })
+
+    # Ordered by submission time so the per-user dedup below keeps each user's
+    # *first* prediction of a match when they predicted it in several leagues.
+    predictions = (
+        Prediction.objects.filter(
+            match_id__in=finished.keys(),
+            membership__league__competition=competition,
+        )
+        .select_related("membership")
+        .order_by("created_at", "id")
+    )
+
+    per_membership = {}  # membership_id -> {"total", "played"} (league view)
+    for p in predictions:
+        points, tier = fair_prediction_points(finished[p.match_id], p)
+
+        row = per_membership.setdefault(
+            p.membership_id, {"total": _ZERO, "played": 0},
+        )
+        row["total"] += points
+        row["played"] += 1
+
+        entry = players.get(p.membership.user_id)
+        if entry is None or p.match_id in entry["seen"]:
+            continue
+        entry["seen"].add(p.match_id)
+        entry["total"] += points
+        entry["played"] += 1
+        if tier == consts.Tier.EXACT:
+            entry["exact_count"] += 1
+
+    # -- player rows: rank by fair total, then the average view ------------- #
+    player_rows = []
+    for entry in players.values():
+        played = entry["played"]
+        player_rows.append({
+            "user": entry["user"],
+            "total": entry["total"],
+            "played": played,
+            "exact_count": entry["exact_count"],
+            "avg_points": (
+                (entry["total"] / played).quantize(_AVG, rounding=ROUND_HALF_UP)
+                if played else Decimal("0.0000")
+            ),
+            "eligible_for_avg": finished_count > 0 and played >= min_played,
+            "rank": None,
+            "avg_rank": None,
+        })
+    # Most points first; ties broken by who signed up earlier (stable + fair).
+    player_rows.sort(key=lambda r: (-r["total"], r["user"].date_joined))
+    _assign_ranks(player_rows, key="total", rank_field="rank")
+
+    eligible = sorted(
+        (r for r in player_rows if r["eligible_for_avg"]),
+        key=lambda r: (-r["avg_points"], -r["played"], r["user"].date_joined),
+    )
+    _assign_ranks(eligible, key="avg_points", rank_field="avg_rank")
+
+    # -- league rows: mean of the eligible members' per-game averages ------- #
+    members_by_league = {}
+    for ms in memberships:
+        members_by_league.setdefault(ms.league_id, []).append(ms)
+
+    league_rows = []
+    for league in League.objects.filter(competition=competition):
+        members = members_by_league.get(league.id, [])
+        averages = []
+        for ms in members:
+            stats = per_membership.get(ms.id)
+            if not stats:
+                continue
+            if not (finished_count > 0 and stats["played"] >= min_played):
+                continue
+            averages.append(stats["total"] / stats["played"])
+        league_rows.append({
+            "league": league,
+            "avg_points": (
+                (sum(averages, _ZERO) / len(averages))
+                .quantize(_AVG, rounding=ROUND_HALF_UP)
+                if averages else None
+            ),
+            "member_count": len(members),
+            "eligible_count": len(averages),
+            "rank": None,
+        })
+    ranked = sorted(
+        (r for r in league_rows if r["avg_points"] is not None),
+        # Best average first; ties broken by more eligible members, then age.
+        key=lambda r: (-r["avg_points"], -r["eligible_count"], r["league"].created_at),
+    )
+    _assign_ranks(ranked, key="avg_points", rank_field="rank")
+    unranked = sorted(
+        (r for r in league_rows if r["avg_points"] is None),
+        key=lambda r: (-r["member_count"], r["league"].created_at),
+    )
+
+    return {
+        "finished_count": finished_count,
+        "players": player_rows,
+        "leagues": ranked + unranked,
+    }
+
+
+def _assign_ranks(rows, key, rank_field):
+    """Standard competition ranking (ties share a rank) over pre-sorted rows."""
+    rank = 0
+    prev = object()
+    for i, row in enumerate(rows, start=1):
+        if row[key] != prev:
+            rank = i
+            prev = row[key]
+        row[rank_field] = rank
+
+
+# --------------------------------------------------------------------------- #
 # Live leaderboard — in-play scores played as if they were the final result
 # --------------------------------------------------------------------------- #
 def _fetch_live_data(league):

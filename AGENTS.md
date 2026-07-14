@@ -51,11 +51,16 @@ There is **no Django session login** for end users and **no `<SignedIn>`/templat
 auth** — that earlier approach was removed. Django's own login is only for the
 **admin panel** (superusers).
 
-The **one exception** to "every endpoint needs a Clerk JWT" is the results export:
-`GET /api/export/<export_key>.xlsx` is public (`AllowAny`, no auth class) and gated
-solely by the league's unguessable `export_key`. The owner shares the key/link so
-anyone can download the standings spreadsheet. It's IP-rate-limited (`ExportThrottle`)
-and the builder hides predictions for matches that haven't locked yet.
+There are **two exceptions** to "every endpoint needs a Clerk JWT", both
+IP-rate-limited for anonymous callers:
+
+- the results export: `GET /api/export/<export_key>.xlsx` is public (`AllowAny`)
+  and gated solely by the league's unguessable `export_key`. The owner shares the
+  key/link so anyone can download the standings spreadsheet (`ExportThrottle`);
+  the builder hides predictions for matches that haven't locked yet.
+- the global scoreboard: `GET /api/scoreboard/` is fully public — it powers the
+  `/scoreboard` page linked from the landing page (`ScoreboardThrottle`). A
+  signed-in caller's token is still honored so their own row is flagged `is_me`.
 
 ---
 
@@ -72,7 +77,7 @@ and the builder hides predictions for matches that haven't locked yet.
 | `accounts/authentication.py` | DRF auth class that calls `clerk.py`. |
 | `accounts/admin.py` | Admin for users. |
 | `predictions/models.py` | `Competition, Team, Match, League, Membership, Prediction, MatchScore`. |
-| `predictions/scoring.py` | **The scoring engine** + recompute + leaderboard (official + the live provisional view). Knockout games are judged on the **120' score**; a game level at 120' is settled on penalties, where a *draw* prediction also names who advances (`penalty_tier` reuses the exact/diff/winner ladder × the stage multiplier — see §6). |
+| `predictions/scoring.py` | **The scoring engine** + recompute + leaderboard (official + the live provisional view) + the public **global scoreboard** (`global_scoreboard`: every player/league on the "fair" default-ladder ×1 scale). Knockout games are judged on the **120' score**; a game level at 120' is settled on penalties, where a *draw* prediction also names who advances (`penalty_tier` reuses the exact/diff/winner ladder × the stage multiplier — see §6). |
 | `predictions/live.py` | Live in-play scores (ESPN primary, Varzesh3 fallback; lazy fetch-on-read). Writes `Match.live_*` via `queryset.update()` only — **never `save()`**, which would finalize the result and trigger scoring. |
 | `predictions/results_sync.py` | Official results from football-data.org: core of the `sync_results` command **and** `finalize_if_due` — the lazy, claim-gated auto-finalization the live endpoint triggers once a match looks over (no cron). The only pipeline allowed to `Match.save()` provider data. Records the penalty-shootout winner and recovers the **120' draw** from the source (see the gotcha in §5). |
 | `predictions/bracket.py` | **Knockout bracket auto-advance.** Reads the "Match N Winner/Loser" wiring from the schedule JSON and, once a feeding match is finished, fills the next round's empty team slots via `queryset.update()` (never `save()` — no scoring, no prediction wipe). Self-contained (uses only our finalized results); `advance_bracket` runs each tick, so every round opens for prediction as the previous one ends. Cheap no-op once the bracket is full. |

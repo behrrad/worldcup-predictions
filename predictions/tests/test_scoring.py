@@ -813,3 +813,198 @@ class BonusScoringTests(TestCase):
         self.assertEqual(rows[self.alex.id]["total"], Decimal("15.00"))
         self.assertEqual(rows[self.alex.id]["bonus_total"], Decimal("0.00"))
         self.assertEqual(rows[self.alex.id]["rank"], 1)
+
+
+class FairPredictionPointsTests(TestCase):
+    """The site-wide fair scale: default ladder, no stage multiplier."""
+
+    def setUp(self):
+        self.comp = make_competition()
+
+    def _finished(self, home, away, stage=consts.Stage.GROUP, penalty_winner=""):
+        m = make_match(self.comp, stage=stage)
+        m.home_score, m.away_score = home, away
+        m.penalty_winner = penalty_winner
+        m.save()
+        return m
+
+    def _pred(self, home, away, advancer=consts.Advancer.NONE):
+        league = make_league(self.comp)
+        member = Membership.objects.get(league=league)
+        return Prediction.objects.create(
+            membership=member, match=make_match(self.comp),
+            predicted_home=home, predicted_away=away, predicted_advancer=advancer,
+        )
+
+    def test_group_ladder(self):
+        m = self._finished(2, 1)
+        for (h, a), points, tier in (
+            ((2, 1), 10, consts.Tier.EXACT),
+            ((3, 2), 7, consts.Tier.DIFF),
+            ((3, 1), 5, consts.Tier.WINNER),
+            ((0, 0), 2, consts.Tier.PARTICIPATION),
+        ):
+            pts, t = scoring.fair_prediction_points(m, self._pred(h, a))
+            self.assertEqual((pts, t), (Decimal(points), tier))
+
+    def test_no_prediction_is_zero(self):
+        m = self._finished(2, 1)
+        self.assertEqual(
+            scoring.fair_prediction_points(m, None),
+            (Decimal("0.00"), consts.Tier.NONE),
+        )
+
+    def test_knockout_has_no_multiplier(self):
+        # The whole point of the fair scale: an exact knockout pick is 10, not 15.
+        m = self._finished(2, 1, stage=consts.Stage.ROUND_OF_16)
+        pts, tier = scoring.fair_prediction_points(m, self._pred(2, 1))
+        self.assertEqual((pts, tier), (Decimal("10.00"), consts.Tier.EXACT))
+
+    def test_penalty_shootout_rules_apply_unmultiplied(self):
+        # 1-1 at 120', home advances on pens: exact draw + right advancer = 10.
+        m = self._finished(
+            1, 1, stage=consts.Stage.QUARTER, penalty_winner=consts.Advancer.HOME,
+        )
+        pts, tier = scoring.fair_prediction_points(
+            m, self._pred(1, 1, advancer=consts.Advancer.HOME),
+        )
+        self.assertEqual((pts, tier), (Decimal("10.00"), consts.Tier.EXACT))
+        # A non-draw pick on a shootout match is plain participation (2).
+        pts, tier = scoring.fair_prediction_points(m, self._pred(2, 1))
+        self.assertEqual((pts, tier), (Decimal("2.00"), consts.Tier.PARTICIPATION))
+
+
+class GlobalScoreboardTests(TestCase):
+    """The cross-league board: fair ×1 totals, player averages, league averages."""
+
+    def setUp(self):
+        self.comp = make_competition()
+        # Two leagues with wildly different configs — the fair board must not care.
+        self.league_a = make_league(self.comp, name="لیگ الف")
+        self.league_b = make_league(
+            self.comp, name="لیگ ب", points_exact=50, multiplier_r16=Decimal("3.0"),
+        )
+        self.u1 = make_user()  # in both leagues
+        self.u2 = make_user()  # only in league A
+        self.a1 = join(self.league_a, self.u1)
+        self.b1 = join(self.league_b, self.u1)
+        self.a2 = join(self.league_a, self.u2)
+        self.b3 = join(self.league_b)  # u3: member, never predicts
+        self.u3 = self.b3.user
+
+        self.m1 = make_match(self.comp)                                  # group
+        self.m2 = make_match(self.comp, stage=consts.Stage.ROUND_OF_16)  # knockout
+
+    def _finish(self, match, home, away):
+        match.home_score, match.away_score = home, away
+        match.save()
+
+    def _board(self):
+        board = scoring.global_scoreboard(self.comp)
+        players = {r["user"].id: r for r in board["players"]}
+        leagues = {r["league"].id: r for r in board["leagues"]}
+        return board, players, leagues
+
+    def test_fair_totals_ignore_league_config_and_dedupe_per_user(self):
+        # u1 predicts m1 in league A first (exact), then differently in league B
+        # — only the earlier pick counts on the player board.
+        Prediction.objects.create(membership=self.a1, match=self.m1,
+                                  predicted_home=2, predicted_away=1)
+        Prediction.objects.create(membership=self.b1, match=self.m1,
+                                  predicted_home=0, predicted_away=0)
+        # u1's m2 pick exists only in league B (points_exact=50, r16 ×3): the
+        # fair board must still award the default 10 with no multiplier.
+        Prediction.objects.create(membership=self.b1, match=self.m2,
+                                  predicted_home=3, predicted_away=0)
+        # u2 gets the winner only on m1 (5).
+        Prediction.objects.create(membership=self.a2, match=self.m1,
+                                  predicted_home=3, predicted_away=1)
+        self._finish(self.m1, 2, 1)
+        self._finish(self.m2, 3, 0)
+
+        _, players, _ = self._board()
+        self.assertEqual(players[self.u1.id]["total"], Decimal("20.00"))  # 10 + 10
+        self.assertEqual(players[self.u1.id]["played"], 2)
+        self.assertEqual(players[self.u1.id]["exact_count"], 2)
+        self.assertEqual(players[self.u2.id]["total"], Decimal("5.00"))
+        # Members who never predicted still appear, at zero.
+        self.assertEqual(players[self.u3.id]["total"], Decimal("0.00"))
+        self.assertEqual(players[self.u1.id]["rank"], 1)
+        self.assertEqual(players[self.u2.id]["rank"], 2)
+
+    def test_average_view_gated_at_half_of_finished(self):
+        # 2 finished matches -> the bar is 1 predicted game.
+        Prediction.objects.create(membership=self.a1, match=self.m1,
+                                  predicted_home=2, predicted_away=1)  # exact 10
+        Prediction.objects.create(membership=self.b1, match=self.m2,
+                                  predicted_home=0, predicted_away=2)  # wrong 2
+        Prediction.objects.create(membership=self.a2, match=self.m1,
+                                  predicted_home=3, predicted_away=1)  # winner 5
+        self._finish(self.m1, 2, 1)
+        self._finish(self.m2, 3, 0)
+
+        _, players, _ = self._board()
+        self.assertEqual(players[self.u1.id]["avg_points"], Decimal("6.0000"))  # 12/2
+        self.assertEqual(players[self.u2.id]["avg_points"], Decimal("5.0000"))
+        self.assertTrue(players[self.u1.id]["eligible_for_avg"])
+        self.assertTrue(players[self.u2.id]["eligible_for_avg"])
+        self.assertFalse(players[self.u3.id]["eligible_for_avg"])
+        self.assertEqual(players[self.u1.id]["avg_rank"], 1)
+        self.assertEqual(players[self.u2.id]["avg_rank"], 2)
+        self.assertIsNone(players[self.u3.id]["avg_rank"])
+
+    def test_league_average_is_mean_of_eligible_member_averages(self):
+        # League A: u1 avg 10 (1 predicted game), u2 avg 5 -> league avg 7.5.
+        # The non-predicting owner is simply not part of the mean.
+        Prediction.objects.create(membership=self.a1, match=self.m1,
+                                  predicted_home=2, predicted_away=1)
+        Prediction.objects.create(membership=self.a2, match=self.m1,
+                                  predicted_home=3, predicted_away=1)
+        # League B: u1's membership predicted both games (2 + 10 = 12, avg 6).
+        Prediction.objects.create(membership=self.b1, match=self.m1,
+                                  predicted_home=0, predicted_away=0)
+        Prediction.objects.create(membership=self.b1, match=self.m2,
+                                  predicted_home=3, predicted_away=0)
+        self._finish(self.m1, 2, 1)
+        self._finish(self.m2, 3, 0)
+
+        _, _, leagues = self._board()
+        row_a = leagues[self.league_a.id]
+        row_b = leagues[self.league_b.id]
+        self.assertEqual(row_a["avg_points"], Decimal("7.5000"))
+        self.assertEqual(row_a["eligible_count"], 2)
+        self.assertEqual(row_a["member_count"], 3)  # owner + u1 + u2
+        self.assertEqual(row_b["avg_points"], Decimal("6.0000"))
+        self.assertEqual(row_a["rank"], 1)
+        self.assertEqual(row_b["rank"], 2)
+
+    def test_league_without_eligible_members_is_unranked(self):
+        Prediction.objects.create(membership=self.a1, match=self.m1,
+                                  predicted_home=2, predicted_away=1)
+        self._finish(self.m1, 2, 1)
+        self._finish(self.m2, 3, 0)
+
+        board, _, leagues = self._board()
+        # Nobody in league B predicted anything -> no average, no rank, last.
+        self.assertIsNone(leagues[self.league_b.id]["avg_points"])
+        self.assertIsNone(leagues[self.league_b.id]["rank"])
+        self.assertEqual(board["leagues"][-1]["league"].id, self.league_b.id)
+
+    def test_no_finished_matches_means_nobody_eligible(self):
+        Prediction.objects.create(membership=self.a1, match=self.m1,
+                                  predicted_home=2, predicted_away=1)
+        board, players, leagues = self._board()
+        self.assertEqual(board["finished_count"], 0)
+        self.assertFalse(players[self.u1.id]["eligible_for_avg"])
+        self.assertIsNone(leagues[self.league_a.id]["avg_points"])
+
+    def test_voided_match_excluded(self):
+        Prediction.objects.create(membership=self.a1, match=self.m1,
+                                  predicted_home=2, predicted_away=1)
+        self.m1.count_for_scoring = False
+        self._finish(self.m1, 2, 1)
+
+        board, players, _ = self._board()
+        self.assertEqual(board["finished_count"], 0)
+        self.assertEqual(players[self.u1.id]["total"], Decimal("0.00"))
+        self.assertEqual(players[self.u1.id]["played"], 0)
