@@ -33,6 +33,14 @@ export default async function Dashboard() {
 
       <TelegramConnect variant="banner" />
 
+      <Link className="card tile" href="/scoreboard">
+        <strong>🌍 جدول کل بازیکنان سایت</strong>
+        <div className="muted">
+          رتبه‌بندی همهٔ بازیکنان روی یک مقیاس منصفانه (ضریب ×۱ برای همهٔ
+          بازی‌ها) — به‌همراه میانگین امتیاز هر بازیکن و رتبه‌بندی لیگ‌ها.
+        </div>
+      </Link>
+
       {me.is_admin && (
         <Link className="card tile" href="/admin/results">
           <strong>🧮 ورود نتایج بازی‌ها (مدیر)</strong>
