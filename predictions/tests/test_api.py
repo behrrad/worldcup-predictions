@@ -1229,3 +1229,54 @@ class GlobalScoreboardApiTests(APITestCase):
         self.assertIsNone(data["competition"])
         self.assertEqual(data["players"], [])
         self.assertEqual(data["leagues"], [])
+
+
+class BonusRevealTests(AuthedTestCase):
+    def setUp(self):
+        super().setUp()
+        self.league = make_league(self.comp, owner=self.user)
+        self.owner_m = Membership.objects.get(league=self.league, user=self.user)
+        self.other = join(self.league)
+        self.team = make_team(self.comp, name="تیم رِ")
+        for m in (self.owner_m, self.other):
+            BonusPrediction.objects.create(
+                membership=m, kind=consts.BonusKind.CHAMPION, team=self.team)
+            BonusPrediction.objects.create(
+                membership=m, kind=consts.BonusKind.LEAGUE_WINNER,
+                target_membership=self.owner_m)
+
+    def _get(self):
+        return self.client.get(
+            reverse("api_league_bonus_all", args=[self.league.slug])).json()
+
+    def _set_lock(self, dt):
+        self.league.bonus_lock_at = dt
+        self.league.save(update_fields=["bonus_lock_at"])
+
+    def test_hidden_before_deadline(self):
+        self._set_lock(timezone.now() + timedelta(days=1))  # still open
+        data = self._get()
+        self.assertFalse(data["revealed"])
+        champ = next(q for q in data["questions"] if q["kind"] == consts.BonusKind.CHAMPION)
+        self.assertEqual(champ["picks"], [])
+
+    def test_outrights_revealed_league_winner_hidden(self):
+        self._set_lock(timezone.now() - timedelta(minutes=1))  # locked
+        data = self._get()
+        self.assertTrue(data["revealed"])
+        self.assertFalse(data["settled"])
+        champ = next(q for q in data["questions"] if q["kind"] == consts.BonusKind.CHAMPION)
+        self.assertEqual(len(champ["picks"]), 2)
+        lw = next(q for q in data["questions"] if q["kind"] == consts.BonusKind.LEAGUE_WINNER)
+        self.assertTrue(lw["hidden"])
+        self.assertEqual(lw["picks"], [])
+
+    def test_league_winner_revealed_after_settle(self):
+        self._set_lock(timezone.now() - timedelta(minutes=1))
+        TournamentOutcome.objects.create(competition=self.comp, settled_at=timezone.now())
+        data = self._get()
+        lw = next(q for q in data["questions"] if q["kind"] == consts.BonusKind.LEAGUE_WINNER)
+        self.assertFalse(lw["hidden"])
+        self.assertEqual(len(lw["picks"]), 2)
+        self.assertTrue(all(
+            p["answer"] == self.owner_m.user.public_name for p in lw["picks"]))

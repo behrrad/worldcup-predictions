@@ -606,6 +606,35 @@ export interface AdminBonusPayload {
   members: AdminBonusMemberT[];
 }
 
+// One member's pick as shown on the reveal.
+export interface BonusAllPick {
+  name: string;
+  is_me: boolean;
+  answer: string;
+  flag: string;
+}
+
+export interface BonusAllQuestion {
+  kind: string;
+  label: string;
+  answer_type: "team" | "player" | "member";
+  points: number;
+  // The league-winner pick stays hidden until settlement (the final reveal).
+  hidden: boolean;
+  picks: BonusAllPick[];
+}
+
+export interface BonusAllResp {
+  enabled: boolean;
+  is_open: boolean;
+  // Outright picks are visible (deadline passed).
+  revealed: boolean;
+  // Results settled — the league-winner picks are now revealed too.
+  settled: boolean;
+  member_count: number;
+  questions: BonusAllQuestion[];
+}
+
 export interface BonusResp {
   // The feature is on for this league (a lock deadline is set).
   enabled: boolean;
